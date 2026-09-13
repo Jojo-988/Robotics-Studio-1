@@ -25,6 +25,8 @@ class FireDetector(Node):
         # ---------------------------------------------------------
         # FIRE LOCATION
         # First test: known fire position in the Gazebo world
+        # Fake-Simulation: fire is at (-9.68, -7.70) in the Gazebo world
+        # Works when Aerial detects fire 
         # ---------------------------------------------------------
 
         self.fire_x = -9.68
