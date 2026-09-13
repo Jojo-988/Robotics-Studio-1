@@ -9,6 +9,7 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 
+# Image based vegetation detector, classifies vegetation into three categories based on color
 
 class VegetationDetector(Node):
 
