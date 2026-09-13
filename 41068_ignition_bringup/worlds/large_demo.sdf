@@ -254,6 +254,7 @@
       <pose>-10.0184 8.85188 0 0 -0 0.3</pose>
     </include>
 
+    <!-- Dead Pines -->
     <include>
       <uri>
         model://pine_dead
