@@ -126,6 +126,13 @@
             <min_angle>0.0</min_angle>
             <max_angle>6.28319</max_angle>
           </horizontal>
+          <!-- Added Vertical Channels for Multi-Plane 3D Point Cloud -->
+          <vertical>
+            <samples>16</samples> <!-- Number of vertical planes/layers -->
+            <resolution>1</resolution>
+            <min_angle>-1.5707</min_angle> <!-- Approx -15 degrees -->
+            <max_angle>0.0</max_angle>  <!-- Approx +15 degrees -->
+          </vertical>
         </scan>
         <range>
           <min>0.2</min>
