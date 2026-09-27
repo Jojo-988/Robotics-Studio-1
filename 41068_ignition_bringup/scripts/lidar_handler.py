@@ -45,7 +45,7 @@ class Lidar_Handler(Node):
     def callback(self, msg):
 
         # === Step 1: convert raw lidar readings to numpy array of points ===
-        raw_points = point_cloud2.read_points_numpy(msg, field_names=('x','y','z'),skip_nans=True)
+        raw_points = point_cloud2.read_points_numpy(msg, field_names=['x','y','z'],skip_nans=True) # note: idk if field names is string or tuple, need to test
 
         # === Step 2: Crop Bounds ===
         # (crop bounds if having issues with points going out of the environment)
@@ -58,7 +58,7 @@ class Lidar_Handler(Node):
         processed_points = np.asarray(downsampled_pcd.points)
 
         # === Step 4: Convert back to ROS2 Point Cloud and publish ===
-        output_msg = point_cloud2.create_cloud_xyz32(header=msg.header, pts=processed_points)
+        output_msg = point_cloud2.create_cloud_xyz32(header=msg.header, points=processed_points)
         self.publish_point_cloud(output_msg)
 
     def publish_point_cloud(self, msg):
