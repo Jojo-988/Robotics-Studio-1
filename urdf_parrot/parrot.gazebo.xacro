@@ -94,8 +94,7 @@
     <plugin
       filename="ignition-gazebo-odometry-publisher-system"
       name="ignition::gazebo::systems::OdometryPublisher">
-      <odom_topic>model/${gz_model_name}/odometry</odom_topic>
-      <dimensions>3</dimensions>
+      <topic>model/${gz_model_name}/odometry</topic>
       <odom_publish_frequency>20</odom_publish_frequency>
       <odom_frame>${prefix}odom</odom_frame>
       <robot_base_frame>${prefix}base_link</robot_base_frame>
@@ -127,6 +126,13 @@
             <min_angle>0.0</min_angle>
             <max_angle>6.28319</max_angle>
           </horizontal>
+          <!-- Added Vertical Channels for Multi-Plane 3D Point Cloud -->
+          <vertical>
+            <samples>16</samples> <!-- Number of vertical planes/layers -->
+            <resolution>1</resolution>
+            <min_angle>-1.5707</min_angle> <!-- Approx -15 degrees -->
+            <max_angle>0.0</max_angle>  <!-- Approx +15 degrees -->
+          </vertical>
         </scan>
         <range>
           <min>0.2</min>
