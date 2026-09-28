@@ -9,7 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 
-ament_python_install_package(allesi_patrol)
+ament_python_install_package(patrol)
 
 find_package(ros_ign_interfaces REQUIRED)
 
