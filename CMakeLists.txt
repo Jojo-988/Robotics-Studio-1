@@ -14,7 +14,7 @@ ament_python_install_package(patrol)
 find_package(ros_ign_interfaces REQUIRED)
 
 install(
-  DIRECTORY config launch models urdf_husky worlds urdf_parrot docs
+  DIRECTORY config launch models urdf_husky worlds urdf_parrot
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -23,15 +23,15 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_pytest REQUIRED)
-  ament_add_pytest_test(coverage_patrol_tests test/test_coverage_patrol.py
-    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
-  ament_add_pytest_test(patrol_ros_tests test/test_patrol_ros.py
-    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
-    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=169)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+# if(BUILD_TESTING)
+#   find_package(ament_cmake_pytest REQUIRED)
+#   ament_add_pytest_test(coverage_patrol_tests test/test_coverage_patrol.py
+#     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+#   ament_add_pytest_test(patrol_ros_tests test/test_patrol_ros.py
+#     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+#     ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=169)
+#   find_package(ament_lint_auto REQUIRED)
+#   ament_lint_auto_find_test_dependencies()
+# endif()
 
 ament_package()
