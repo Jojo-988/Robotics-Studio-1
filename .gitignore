@@ -1,2 +1,11 @@
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ROS build outputs
 build/
-.vscode/
+install/
+log/
