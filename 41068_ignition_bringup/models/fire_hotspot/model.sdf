@@ -1,0 +1,196 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+
+  <model name="fire_hotspot">
+    <static>true</static>
+
+    <link name="fire_link">
+
+      <!-- ========================= -->
+      <!-- SCORCHED GROUND -->
+      <!-- ========================= -->
+
+      <visual name="burnt_ground">
+        <pose>0 0 0.015 0 0 0</pose>
+
+        <geometry>
+          <cylinder>
+            <radius>1.15</radius>
+            <length>0.025</length>
+          </cylinder>
+        </geometry>
+
+        <material>
+          <ambient>0.035 0.025 0.015 1</ambient>
+          <diffuse>0.06 0.045 0.025 1</diffuse>
+          <roughness>1.0</roughness>
+        </material>
+      </visual>
+
+
+      <!-- ========================= -->
+      <!-- FIRE GLOW -->
+      <!-- ========================= -->
+
+      <light name="fire_light" type="point">
+        <pose>0 0 0.55 0 0 0</pose>
+
+        <diffuse>1.0 0.32 0.05 1</diffuse>
+        <specular>0.4 0.15 0.02 1</specular>
+
+        <attenuation>
+          <range>5</range>
+          <constant>0.5</constant>
+          <linear>0.15</linear>
+          <quadratic>0.05</quadratic>
+        </attenuation>
+      </light>
+
+
+      <!-- ========================= -->
+      <!-- MAIN FLAME PARTICLES -->
+      <!-- ========================= -->
+
+      <particle_emitter name="main_flame" type="box">
+
+        <pose>0 0 0.15 0 0 0</pose>
+
+        <emitting>true</emitting>
+
+        <size>5.0 1.2 0.10</size>
+
+        <particle_size>
+          0.18 0.32 0.05
+        </particle_size>
+
+        <rate>45</rate>
+
+        <lifetime>0.75</lifetime>
+
+        <min_velocity>0.45</min_velocity>
+        <max_velocity>1.20</max_velocity>
+
+        <scale_rate>0.35</scale_rate>
+
+        <color_start>
+          1.0 0.65 0.05 0.95
+        </color_start>
+
+        <color_end>
+          0.9 0.04 0.01 0.05
+        </color_end>
+
+      </particle_emitter>
+
+
+      <!-- ========================= -->
+      <!-- SMALL SIDE FLAME -->
+      <!-- ========================= -->
+
+      <particle_emitter name="side_flame_1" type="box">
+
+        <pose>0.38 0.15 0.12 0 0 0</pose>
+
+        <emitting>true</emitting>
+
+        <size>0.31 0.38 0.08</size>
+
+        <particle_size>
+          0.12 0.24 0.04
+        </particle_size>
+
+        <rate>25</rate>
+
+        <lifetime>0.55</lifetime>
+
+        <min_velocity>0.35</min_velocity>
+        <max_velocity>0.90</max_velocity>
+
+        <scale_rate>0.25</scale_rate>
+
+        <color_start>
+          1.0 0.75 0.08 0.9
+        </color_start>
+
+        <color_end>
+          1.0 0.05 0.0 0.02
+        </color_end>
+
+      </particle_emitter>
+
+
+      <!-- ========================= -->
+      <!-- SECOND SIDE FLAME -->
+      <!-- ========================= -->
+
+      <particle_emitter name="side_flame_2" type="box">
+
+        <pose>-0.32 -0.18 0.12 0 0 0</pose>
+
+        <emitting>true</emitting>
+
+        <size>0.35 0.28 0.08</size>
+
+        <particle_size>
+          0.11 0.22 0.04
+        </particle_size>
+
+        <rate>22</rate>
+
+        <lifetime>0.50</lifetime>
+
+        <min_velocity>0.30</min_velocity>
+        <max_velocity>0.85</max_velocity>
+
+        <scale_rate>0.25</scale_rate>
+
+        <color_start>
+          1.0 0.55 0.03 0.9
+        </color_start>
+
+        <color_end>
+          0.8 0.03 0.0 0.02
+        </color_end>
+
+      </particle_emitter>
+
+
+      <!-- ========================= -->
+      <!-- SMOKE -->
+      <!-- ========================= -->
+
+      <particle_emitter name="smoke" type="box">
+
+        <pose>0 0 0.65 0 0 0</pose>
+
+        <emitting>true</emitting>
+
+        <size>0.50 0.50 0.10</size>
+
+        <particle_size>
+          0.35 0.35 0.10
+        </particle_size>
+
+        <rate>12</rate>
+
+        <lifetime>3.0</lifetime>
+
+        <min_velocity>0.25</min_velocity>
+        <max_velocity>0.60</max_velocity>
+
+        <scale_rate>0.45</scale_rate>
+
+        <color_start>
+          0.12 0.12 0.12 0.55
+        </color_start>
+
+        <color_end>
+          0.35 0.35 0.35 0.0
+        </color_end>
+
+      </particle_emitter>
+
+    </link>
+  </model>
+
+</sdf>

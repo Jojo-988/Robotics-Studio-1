@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+
+  <model name="pine_dead">
+
+    <static>true</static>
+
+    <link name="link">
+
+      <!-- Collision can keep the complete original tree -->
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>meshes/pine_tree.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+
+      <!-- BURNT TREE: BARK / TRUNK ONLY -->
+      <!-- Branch foliage visual intentionally removed -->
+      <visual name="burnt_bark">
+
+        <geometry>
+          <mesh>
+            <uri>meshes/pine_tree.dae</uri>
+
+            <submesh>
+              <name>Bark</name>
+            </submesh>
+
+          </mesh>
+        </geometry>
+
+        <material>
+
+          <!-- Very dark charcoal / burnt appearance -->
+          <ambient>0.03 0.03 0.03 1</ambient>
+          <diffuse>0.06 0.05 0.04 1</diffuse>
+          <specular>0.01 0.01 0.01 1</specular>
+
+          <pbr>
+            <metal>
+              <albedo_map>
+                materials/textures/bark_diffuse.png
+              </albedo_map>
+
+              <metalness>0.0</metalness>
+              <roughness>1.0</roughness>
+            </metal>
+          </pbr>
+
+        </material>
+
+      </visual>
+
+    </link>
+
+  </model>
+
+</sdf>

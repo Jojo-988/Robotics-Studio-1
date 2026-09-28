@@ -1,0 +1,116 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+
+  <model name="pine_stressed">
+
+    <static>true</static>
+
+    <link name="link">
+
+      <!-- COLLISION -->
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>meshes/pine_tree.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+
+      <!-- STRESSED BRANCHES -->
+      <visual name="branch">
+
+        <geometry>
+          <mesh>
+            <uri>meshes/pine_tree.dae</uri>
+
+            <submesh>
+              <name>Branch</name>
+            </submesh>
+
+          </mesh>
+        </geometry>
+
+        <material>
+
+          <double_sided>true</double_sided>
+
+          <diffuse>1 1 1 1</diffuse>
+
+          <script>
+
+            <uri>materials/scripts</uri>
+            <uri>materials/textures</uri>
+
+            <name>PineTreeStressed/Branch</name>
+
+          </script>
+
+          <pbr>
+            <metal>
+
+              <albedo_map>
+                materials/textures/branch_2_diffuse_original.png
+              </albedo_map>
+
+              <metalness>0.0</metalness>
+              <roughness>1.0</roughness>
+
+            </metal>
+          </pbr>
+
+        </material>
+
+      </visual>
+
+
+      <!-- BARK -->
+      <visual name="bark">
+
+        <geometry>
+          <mesh>
+
+            <uri>meshes/pine_tree.dae</uri>
+
+            <submesh>
+              <name>Bark</name>
+            </submesh>
+
+          </mesh>
+        </geometry>
+
+        <material>
+
+          <diffuse>1 1 1 1</diffuse>
+
+          <script>
+
+            <uri>materials/scripts</uri>
+            <uri>materials/textures</uri>
+
+            <name>PineTreeStressed/Bark</name>
+
+          </script>
+
+          <pbr>
+            <metal>
+
+              <albedo_map>
+                materials/textures/bark_diffuse.png
+              </albedo_map>
+
+              <metalness>0.0</metalness>
+              <roughness>1.0</roughness>
+
+            </metal>
+          </pbr>
+
+        </material>
+
+      </visual>
+
+    </link>
+
+  </model>
+
+</sdf>
