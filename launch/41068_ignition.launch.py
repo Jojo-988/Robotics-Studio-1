@@ -52,6 +52,7 @@ def add_robot(
     z,
     yaw='0.0',
     spawn_delay=0.0,
+    extra_xacro_args=None,
 ):
     """Add one robot instance to the launch description.
 
@@ -71,7 +72,7 @@ def add_robot(
             'prefix:=', frame_prefix,
             ' ',
             'gz_model_name:=', gz_model_name,
-        ]),
+        ] + (extra_xacro_args or [])),
         value_type=str,
     )
 
@@ -276,6 +277,13 @@ def generate_launch_description():
         choices=['simple_trees', 'large_demo'],
     )
     ld.add_action(world_launch_arg)
+    ld.add_action(DeclareLaunchArgument(
+        'gz_gui', default_value='True', description='Show Gazebo GUI; false runs the server only.',
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'parrot_camera_pitch', default_value='0.785398',
+        description='Parrot camera pitch in radians; pi/2 points down.',
+    ))
 
     # Load common Gazebo server systems from a shared config file. This keeps
     # required systems such as Sensors out of individual robot and world files,
@@ -309,7 +317,8 @@ def generate_launch_description():
                     'worlds',
                     [LaunchConfiguration('world'), '.sdf'],
                 ]),
-                ' -r',
+                PythonExpression(["' -r' if '", LaunchConfiguration('gz_gui'),
+                                  "'.lower() in ", _TRUE_STRINGS, " else ' -r -s'"]),
             ]
         }.items(),
     ))
@@ -360,6 +369,7 @@ def generate_launch_description():
         y='0.0',
         z='0.8',
         spawn_delay=6.0,
+        extra_xacro_args=[' camera_pitch:=', LaunchConfiguration('parrot_camera_pitch')],
     )
 
     add_navigation_instance(
