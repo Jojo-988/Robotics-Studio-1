@@ -1,0 +1,30 @@
+/**:
+  ros__parameters:
+    # Gazebo world coordinates. large_demo's forest walls are at +/-12.5 m.
+    x_min: -12.5
+    x_max: 12.5
+    y_min: -12.5
+    y_max: 12.5
+    altitude: 15.0
+    # Assumed conservative footprint DIAMETER, not camera/map completeness.
+    footprint_width: 6.0  # Current scanning diameter
+    overlap: 0.2  # Overlap area reserved between scanning strips
+    sweep_axis: auto
+    waypoint_spacing: 2.0 # Maximum distance between two navigation points
+    grid_resolution: 0.5  # Set the maximum edge length of the regional mesh
+    position_tolerance: 0.15  # Judging the error in reaching the navigation point
+    altitude_tolerance: 0.2
+    max_speed: 1.5
+    vertical_speed: 1.0
+    max_yaw_rate: 0.8
+    position_gain: 1.0
+    waypoint_timeout: 90.0
+    repeat: false
+    control_rate: 20.0
+    odom_timeout: 1.0
+    max_tilt: 0.2
+    odom_topic: odometry
+    odom_frame: parrot1_odom
+    base_frame: parrot1_base_link
+    mission_frame: world
+    cmd_vel_topic: cmd_vel
