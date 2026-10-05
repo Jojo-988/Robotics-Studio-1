@@ -1,5 +1,20 @@
 # 41068 Ignition Bringup
 
+## Husky goal navigation and avoidance integration
+
+The new Husky module accepts a target position and heading, plans with NavFn A*,
+and follows the path with Nav2 DWB or a teammate's `FollowPath` action server.
+See [the rover navigation guide](docs/ROVER_NAVIGATION.md) for build/run commands,
+the ROS interface contract, pause/cancel/replanning, and integration tests.
+
+```bash
+ros2 launch 41068_ignition_bringup 41068_rover_navigation.launch.py
+```
+
+This dedicated launch starts Husky and SLAM itself. Do not run another Husky
+Nav2 stack or cmd_vel controller alongside it. The older teaching examples below
+are separate operating modes.
+
 Bringup for *41068 Robotics Studio I*. This package launches a Husky UGV and/or a simple "Parrot" drone in custom Ignition Gazebo simulation worlds with trees and grass. We use **ROS 2 Humble** and **Ignition Gazebo Fortress**.
 
 The aim of this package is to provide a starting point for your project, so that you have a simulation environment and basic autonomy working from the beginning. You are welcome to and encouraged to use and adapt this package in any way you see fit for your project. Get creative!
