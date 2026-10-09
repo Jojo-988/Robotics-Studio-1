@@ -4,12 +4,10 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Image
+from std_msgs.msg import Bool
 from cv_bridge import CvBridge
 
-from nav2_msgs.action import NavigateToPose
-from rclpy.action import ActionClient
-
-from geometry_msgs.msg import PoseStamped
+from rclpy.qos import qos_profile_sensor_data
 
 import cv2
 import numpy as np
@@ -22,51 +20,36 @@ class FireDetector(Node):
 
         self.bridge = CvBridge()
 
-        # ---------------------------------------------------------
-        # FIRE LOCATION
-        # First test: known fire position in the Gazebo world
-        # Fake-Simulation: fire is at (-9.68, -7.70) in the Gazebo world
-        # Works when Aerial detects fire 
-        # ---------------------------------------------------------
+        self.declare_parameter('image_topic', '/husky1/camera/image')
+        image_topic = self.get_parameter('image_topic').value
 
-        self.fire_x = -9.68
-        self.fire_y = -7.70
+        self.declare_parameter(
+            'fire_result_topic',
+            '/husky1/vision/fire_detected'
+        )
+        fire_result_topic = self.get_parameter('fire_result_topic').value
 
-        # Prevent continuously sending the same navigation goal
-        self.fire_detected = False
-        self.goal_sent = False
-
-        # Minimum fire area in camera image
+        self.fire_result_pub = self.create_publisher(
+            Bool,
+            fire_result_topic,
+            10
+        )
+        
         self.min_fire_area = 300
-
-        # ---------------------------------------------------------
-        # PARROT CAMERA
-        # ---------------------------------------------------------
+        self.window_name = f'Fire Detection - {image_topic}'
+        self.mask_window_name = f'Fire Mask - {image_topic}'
 
         self.camera_sub = self.create_subscription(
             Image,
-            '/parrot1/camera/image',
+            image_topic,
             self.image_callback,
-            10
-        )
-
-        # ---------------------------------------------------------
-        # NAV2 ACTION CLIENT
-        # ---------------------------------------------------------
-
-        self.nav_client = ActionClient(
-            self,
-            NavigateToPose,
-            '/husky1/navigate_to_pose'
+            qos_profile_sensor_data
         )
 
         self.get_logger().info(
-            'Fire detector started.'
+            f'Fire detector listening to {image_topic}'
         )
 
-        self.get_logger().info(
-            'Waiting for fire detection from Parrot camera...'
-        )
 
     # =============================================================
     # CAMERA CALLBACK
@@ -192,10 +175,16 @@ class FireDetector(Node):
         # FIRE FOUND
         # =========================================================
 
-        if (
+        detected = (
             largest_fire is not None
             and largest_area > self.min_fire_area
-        ):
+        )
+
+        result_msg = Bool()
+        result_msg.data = bool(detected)
+        self.fire_result_pub.publish(result_msg)
+
+        if detected:
 
             x, y, w, h = cv2.boundingRect(
                 largest_fire
@@ -242,39 +231,18 @@ class FireDetector(Node):
                 2
             )
 
-            # Only trigger navigation once
-            if not self.fire_detected:
-
-                self.fire_detected = True
-
-                self.get_logger().warn(
-                    'FIRE DETECTED!'
-                )
-
-                self.get_logger().info(
-                    f'Fire image pixel: '
-                    f'({fire_u}, {fire_v})'
-                )
-
-                self.get_logger().info(
-                    f'Fire location: '
-                    f'({self.fire_x:.2f}, '
-                    f'{self.fire_y:.2f})'
-                )
-
-                self.send_husky_to_fire()
 
         # =========================================================
         # DISPLAY CAMERA
         # =========================================================
 
         cv2.imshow(
-            'Parrot Fire Detection',
+            self.window_name,
             frame
         )
 
         cv2.imshow(
-            'Fire Mask',
+            self.mask_window_name,
             fire_mask
         )
 
@@ -284,141 +252,141 @@ class FireDetector(Node):
     # SEND HUSKY
     # =============================================================
 
-    def send_husky_to_fire(self):
+    # def send_husky_to_fire(self):
 
-        if self.goal_sent:
-            return
+    #     if self.goal_sent:
+    #         return
 
-        self.get_logger().info(
-            'Waiting for Husky Nav2...'
-        )
+    #     self.get_logger().info(
+    #         'Waiting for Husky Nav2...'
+    #     )
 
-        if not self.nav_client.wait_for_server(
-            timeout_sec=5.0
-        ):
+    #     if not self.nav_client.wait_for_server(
+    #         timeout_sec=5.0
+    #     ):
 
-            self.get_logger().error(
-                'NavigateToPose action server '
-                'is not available.'
-            )
+    #         self.get_logger().error(
+    #             'NavigateToPose action server '
+    #             'is not available.'
+    #         )
 
-            # Allow retry
-            self.fire_detected = False
+    #         # Allow retry
+    #         self.fire_detected = False
 
-            return
+    #         return
 
-        goal_msg = NavigateToPose.Goal()
+    #     goal_msg = NavigateToPose.Goal()
 
-        goal_msg.pose = PoseStamped()
+    #     goal_msg.pose = PoseStamped()
 
-        # IMPORTANT:
-        # This assumes your navigation goals use "map".
-        goal_msg.pose.header.frame_id = 'map'
+    #     # IMPORTANT:
+    #     # This assumes your navigation goals use "map".
+    #     goal_msg.pose.header.frame_id = 'map'
 
-        goal_msg.pose.header.stamp = (
-            self.get_clock().now().to_msg()
-        )
+    #     goal_msg.pose.header.stamp = (
+    #         self.get_clock().now().to_msg()
+    #     )
 
-        goal_msg.pose.pose.position.x = (
-            self.fire_x
-        )
+    #     goal_msg.pose.pose.position.x = (
+    #         self.fire_x
+    #     )
 
-        goal_msg.pose.pose.position.y = (
-            self.fire_y
-        )
+    #     goal_msg.pose.pose.position.y = (
+    #         self.fire_y
+    #     )
 
-        goal_msg.pose.pose.position.z = 0.0
+    #     goal_msg.pose.pose.position.z = 0.0
 
-        # No rotation
-        goal_msg.pose.pose.orientation.x = 0.0
-        goal_msg.pose.pose.orientation.y = 0.0
-        goal_msg.pose.pose.orientation.z = 0.0
-        goal_msg.pose.pose.orientation.w = 1.0
+    #     # No rotation
+    #     goal_msg.pose.pose.orientation.x = 0.0
+    #     goal_msg.pose.pose.orientation.y = 0.0
+    #     goal_msg.pose.pose.orientation.z = 0.0
+    #     goal_msg.pose.pose.orientation.w = 1.0
 
-        self.get_logger().info(
-            'Sending Husky to fire location...'
-        )
+    #     self.get_logger().info(
+    #         'Sending Husky to fire location...'
+    #     )
 
-        self.goal_sent = True
+    #     self.goal_sent = True
 
-        future = self.nav_client.send_goal_async(
-            goal_msg,
-            feedback_callback=self.navigation_feedback
-        )
+    #     future = self.nav_client.send_goal_async(
+    #         goal_msg,
+    #         feedback_callback=self.navigation_feedback
+    #     )
 
-        future.add_done_callback(
-            self.goal_response_callback
-        )
+    #     future.add_done_callback(
+    #         self.goal_response_callback
+    #     )
 
-    # =============================================================
-    # GOAL RESPONSE
-    # =============================================================
+    # # =============================================================
+    # # GOAL RESPONSE
+    # # =============================================================
 
-    def goal_response_callback(self, future):
+    # def goal_response_callback(self, future):
 
-        goal_handle = future.result()
+    #     goal_handle = future.result()
 
-        if not goal_handle.accepted:
+    #     if not goal_handle.accepted:
 
-            self.get_logger().error(
-                'Husky navigation goal rejected.'
-            )
+    #         self.get_logger().error(
+    #             'Husky navigation goal rejected.'
+    #         )
 
-            self.goal_sent = False
-            return
+    #         self.goal_sent = False
+    #         return
 
-        self.get_logger().info(
-            'Husky navigation goal accepted.'
-        )
+    #     self.get_logger().info(
+    #         'Husky navigation goal accepted.'
+    #     )
 
-        result_future = (
-            goal_handle.get_result_async()
-        )
+    #     result_future = (
+    #         goal_handle.get_result_async()
+    #     )
 
-        result_future.add_done_callback(
-            self.navigation_result_callback
-        )
+    #     result_future.add_done_callback(
+    #         self.navigation_result_callback
+    #     )
 
-    # =============================================================
-    # NAVIGATION FEEDBACK
-    # =============================================================
+    # # =============================================================
+    # # NAVIGATION FEEDBACK
+    # # =============================================================
 
-    def navigation_feedback(self, feedback_msg):
+    # def navigation_feedback(self, feedback_msg):
 
-        feedback = feedback_msg.feedback
+    #     feedback = feedback_msg.feedback
 
-        try:
+    #     try:
 
-            distance = (
-                feedback.distance_remaining
-            )
+    #         distance = (
+    #             feedback.distance_remaining
+    #         )
 
-            self.get_logger().info(
-                f'Distance to fire: '
-                f'{distance:.2f} m',
-                throttle_duration_sec=2.0
-            )
+    #         self.get_logger().info(
+    #             f'Distance to fire: '
+    #             f'{distance:.2f} m',
+    #             throttle_duration_sec=2.0
+    #         )
 
-        except Exception:
-            pass
+    #     except Exception:
+    #         pass
 
-    # =============================================================
-    # NAVIGATION RESULT
-    # =============================================================
+    # # =============================================================
+    # # NAVIGATION RESULT
+    # # =============================================================
 
-    def navigation_result_callback(self, future):
+    # def navigation_result_callback(self, future):
 
-        result = future.result()
+    #     result = future.result()
 
-        self.get_logger().info(
-            'Husky navigation finished.'
-        )
+    #     self.get_logger().info(
+    #         'Husky navigation finished.'
+    #     )
 
-        self.get_logger().info(
-            f'Husky arrived near fire location '
-            f'({self.fire_x:.2f}, '
-            f'{self.fire_y:.2f})'
-        )
+    #     self.get_logger().info(
+    #         f'Husky arrived near fire location '
+    #         f'({self.fire_x:.2f}, '
+    #         f'{self.fire_y:.2f})'
+    #     )
 
 
 def main(args=None):

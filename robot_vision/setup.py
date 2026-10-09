@@ -1,3 +1,4 @@
+from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'robot_vision'
@@ -10,6 +11,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/launch',
+            glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -22,9 +25,11 @@ setup(
             'pytest',
         ],
     },
-    entry_points={
+        entry_points={
         'console_scripts': [
             'camera_viewer = robot_vision.camera_viewer:main',
+            'fire_detector = robot_vision.fire_detector:main',
+            'vegetation_detector = robot_vision.vegetation_detector:main',
         ],
     },
 )

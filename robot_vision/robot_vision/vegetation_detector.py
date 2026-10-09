@@ -2,6 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
@@ -19,16 +20,22 @@ class VegetationDetector(Node):
         # Convert between ROS Image messages and OpenCV images
         self.bridge = CvBridge()
 
-        # Subscribe to Parrot RGB camera
+        # Choose the camera topic when starting the node.
+        self.declare_parameter('image_topic', '/husky1/camera/image')
+        image_topic = self.get_parameter('image_topic').value
+
+        # Give each camera its own display window.
+        self.window_name = f'Vegetation Detection - {image_topic}'
+
         self.subscription = self.create_subscription(
             Image,
-            '/parrot1/camera/image',
+            image_topic,
             self.image_callback,
-            10
+            qos_profile_sensor_data
         )
 
         self.get_logger().info(
-            'Vegetation Detector started - listening to /parrot1/camera/image'
+            f'Vegetation detector listening to {image_topic}'
         )
 
     def image_callback(self, msg):
@@ -243,7 +250,7 @@ class VegetationDetector(Node):
         # ---------------------------------------------------------
 
         cv2.imshow(
-            'Parrot Vegetation Detector',
+            self.window_name,
             frame
         )
 
