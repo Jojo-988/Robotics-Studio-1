@@ -22,6 +22,7 @@ install(
 install(
   PROGRAMS scripts/dynamic_world_demo.py scripts/basic_autonomy_demo.py scripts/coverage_patrol.py
     scripts/rover_goal_navigation.py
+    scripts/parrot1_navigation.py
     scripts/map_processor.py
   DESTINATION lib/${PROJECT_NAME}
 )
