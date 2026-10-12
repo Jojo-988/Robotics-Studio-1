@@ -21,11 +21,12 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool, Trigger
 
+# Subscription and publication topics for Husky1 rover and Parrot1 drone.
 ROVER_CAMERA = '/husky1/camera/image'
 AERIAL_CAMERA = '/parrot1/camera/image'
 ROVER_ODOM = '/husky1/odom'
 AERIAL_ODOM = '/parrot1/odom'
-ROVER_GOAL = '/husky1/rover/goal'  # Existing custom rover goal subscriber
+ROVER_GOAL = '/husky1/rover/goal'  
 ROVER_STATUS = '/husky1/rover/status'
 ROVER_PAUSE = '/husky1/rover/pause'
 ROVER_CANCEL = '/husky1/rover/cancel'
@@ -34,7 +35,8 @@ ROVER_MAP_FRAME = 'husky1_map'
 PARROT_ACTION = '/parrot1/navigate_to_pose'
 PARROT_MAP_FRAME = 'map'  # Check: ros2 param get /parrot1/global_costmap/global_costmap global_frame
 
-
+# vegetation and fire detection in the camera frames. 
+# called from the BridgeNode class to process incoming images from the rover and aerial cameras.
 def detect_regions(frame, mask, label, colour):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     count = 0
@@ -50,7 +52,7 @@ def detect_regions(frame, mask, label, colour):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, colour, 2)
     return count
 
-
+# Annotate vegetation regions in the image
 def annotate_vegetation(frame):
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
     ranges = (
@@ -68,7 +70,7 @@ def annotate_vegetation(frame):
         counts[label] = detect_regions(frame, mask, label.upper(), colour)
     return counts
 
-
+# Annotate fire regions in the image using color recognition
 def annotate_fire(frame):
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (5, 5), 0), cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
@@ -88,7 +90,7 @@ def annotate_fire(frame):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
     return bool(detected)
 
-
+# Bridge node for integrating GUI with ROS 2
 class BridgeNode(Node):
     def __init__(self):
         super().__init__('forest_monitoring_gui')
@@ -124,10 +126,12 @@ class BridgeNode(Node):
         # Parrot uses its existing Nav2 action server, not the rover custom services.
         self.parrot_nav_client = ActionClient(self, NavigateToPose, PARROT_ACTION)
 
+    # Thread-safe setter for Parrot status message
     def set_parrot_status(self, message):
         with self.lock:
             self.parrot_status = message
-
+    
+    # Process incoming camera images, detect vegetation and fire, and update the GUI.
     def on_image(self, robot, msg):
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -147,11 +151,13 @@ class BridgeNode(Node):
         except Exception as exc:
             self.get_logger().warning(f'{robot} image/detection error: {exc}')
 
+    # Update robot positions from odometry messages
     def on_odom(self, robot, msg):
         p = msg.pose.pose.position
         with self.lock:
             self.positions[robot] = (p.x, p.y, p.z)
 
+    # Update rover status from string messages
     def on_status(self, msg):
         try:
             info = json.loads(msg.data)
@@ -161,6 +167,7 @@ class BridgeNode(Node):
         with self.lock:
             self.rover_status = status
 
+    # Send a PoseStamped goal to the Husky1 rover using the existing custom interface.
     def send_goal(self, x, y, yaw_deg):
         """Existing Husky1 PoseStamped goal publisher."""
         msg = PoseStamped()
@@ -172,7 +179,7 @@ class BridgeNode(Node):
         msg.pose.orientation.z = math.sin(yaw / 2)
         msg.pose.orientation.w = math.cos(yaw / 2)
         self.goal_pub.publish(msg)
-
+    # Request to pause or resume the rover
     def request_pause(self, paused):
         if not self.pause_client.service_is_ready():
             return False
@@ -184,7 +191,8 @@ class BridgeNode(Node):
             return False
         self.cancel_client.call_async(Trigger.Request())
         return True
-
+    
+    # Send a navigation goal to the Parrot1 drone using the Nav2 action server.
     def send_parrot_goal(self, x, y, z, yaw_deg):
         """Send a Parrot1 Nav2 goal. Z may be ignored by a 2D Nav2 controller."""
         if not self.parrot_nav_client.server_is_ready():
@@ -216,6 +224,7 @@ class BridgeNode(Node):
                 self.parrot_status = f'Goal send failed: {exc}'
             return False
 
+    # Handle the response from the Parrot1 Nav2 action server after sending a goal.
     def parrot_goal_response(self, future):
         try:
             handle = future.result()
@@ -239,7 +248,8 @@ class BridgeNode(Node):
                 self.parrot_goal_pending = False
                 self.parrot_cancel_pending = False
                 self.parrot_status = f'Goal response error: {exc}'
-
+    
+    # Handle the result of the Parrot1 navigation goal, updating the status accordingly.
     def parrot_goal_result(self, future):
         try:
             status = future.result().status
@@ -280,7 +290,7 @@ class BridgeNode(Node):
         except Exception as exc:
             self.set_parrot_status(f'Cancel request failed: {exc}')
 
-
+# GUI dashboard for displaying camera feeds, vegetation/fire detection results, and robot status.
 class Dashboard:
     def __init__(self, root, node):
         self.root, self.node = root, node
@@ -335,7 +345,7 @@ class Dashboard:
             label.pack(pady=3)
             self.position_labels[robot] = label
 
-        # Rover: retain its existing X/Y/Yaw + pause/resume + cancel controls.
+        # Rover: having X/Y/Yaw + pause/resume + cancel controls.
         controls = tk.LabelFrame(body, text='Husky1 Navigation Goal (husky1_map)',
                                  bg='#15202b', fg='white', font=('Arial', 11))
         controls.pack(fill='x', padx=25, pady=6)
@@ -350,7 +360,7 @@ class Dashboard:
                   bg='#b72d32', fg='white', font=('Arial', 11, 'bold'),
                   command=self.cancel).pack(pady=7)
 
-        # Parrot: same style, with altitude and Nav2 action cancellation.
+        # Parrot: customisable control on X/Y/Z/Yaw, but pause/resume not implemented in Nav2.
         aerial_controls = tk.LabelFrame(body, text=f'Parrot1 Navigation Goal ({PARROT_MAP_FRAME})',
                                         bg='#15202b', fg='white', font=('Arial', 11))
         aerial_controls.pack(fill='x', padx=25, pady=6)
