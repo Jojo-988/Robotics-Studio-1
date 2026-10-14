@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Forest Monitoring Control Station for ROS 2 Humble.
-
-Two independently controlled robots, obstacle warnings and image annotations.
-Husky uses husky1_map; Parrot uses parrot1_map. Parrot Z is passed to Nav2,
-but standard 2D Nav2 may ignore altitude; a 3D controller is required to climb.
-The GUI does not launch Nav2 or guarantee collision avoidance/emergency stopping.
-"""
 import json
 import math
 import threading
