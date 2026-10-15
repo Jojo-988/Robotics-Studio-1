@@ -1,11 +1,34 @@
 # 41068 Ignition Bringup
 
+## Parrot automatic area coverage
+
+The dedicated coverage launch takes off to 15 m, surveys the default 25 x 25 m
+forest with a lawnmower route, and returns to hover above its starting position.
+It uses 3D Gazebo odometry and points the camera downward.
+
+After building the ROS 2 Humble workspace, run this from the repository root:
+
+```bash
+bash scripts/start_coverage_patrol.sh
+```
+
+The helper loads the workspace environment, uses ROS domain 192 and software
+rendering by default, and creates a fresh Gazebo transport partition on each
+launch. The checkout should be under `<workspace>/src/<repository>`; set
+`PATROL_WORKSPACE` for another layout. No personal home path is stored in it.
+Launch arguments can be appended, for example `repeat:=true` or `gz_gui:=false`.
+Set `PATROL_ROS_DOMAIN_ID` to override domain 192. In a separate ROS monitoring
+terminal, source the same workspace and set `ROS_LOCALHOST_ONLY=1` and the same
+`ROS_DOMAIN_ID`. Stop the previous patrol launch with Ctrl+C before starting
+another on that domain.
+
+This mode owns the Parrot velocity command. Run it separately from Parrot Nav2,
+GUI aerial goal commands, mapping missions, and keyboard teleoperation.
+
 ## Husky goal navigation and avoidance integration
 
 The new Husky module accepts a target position and heading, plans with NavFn A*,
 and follows the path with Nav2 DWB or a teammate's `FollowPath` action server.
-See [the rover navigation guide](docs/ROVER_NAVIGATION.md) for build/run commands,
-the ROS interface contract, pause/cancel/replanning, and integration tests.
 
 ```bash
 ros2 launch 41068_ignition_bringup 41068_rover_navigation.launch.py
