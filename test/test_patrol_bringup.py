@@ -42,6 +42,10 @@ class ModelTests(unittest.TestCase):
         joint = self.model().find("joint[@name='parrot1_camera_joint']/origin")
         self.assertAlmostEqual(float(joint.attrib['rpy'].split()[1]), .785398)
 
+    def test_depth_range_reaches_the_survey_ground(self):
+        far = float(self.model().findtext('.//camera/depth_camera/clip/far'))
+        self.assertGreater(far, 15.0)
+
 
 class InstalledLaunchTests(unittest.TestCase):
     def test_installed_launch_starts_patrol_without_odometry(self):

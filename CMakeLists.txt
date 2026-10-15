@@ -34,20 +34,26 @@ if(BUILD_TESTING)
   ament_add_pytest_test(coverage_patrol_tests test/test_coverage_patrol.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 
+  ament_add_pytest_test(patrol_health_tests test/test_patrol_health.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+
+  ament_add_pytest_test(patrol_startup_tests test/test_patrol_startup.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+
   ament_add_pytest_test(patrol_ros_tests test/test_patrol_ros.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
-    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=189 TIMEOUT 60)
+    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=66 TIMEOUT 90)
 
   ament_add_pytest_test(patrol_bringup_tests test/test_patrol_bringup.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
-    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=190 TIMEOUT 60)
+    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=67 TIMEOUT 60)
 
   ament_add_pytest_test(rover_core_tests test/test_rover_core.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 
   ament_add_pytest_test(rover_ros_tests test/test_rover_ros.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
-    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=173 TIMEOUT 90)
+    ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=69 TIMEOUT 90)
 endif()
 
 ament_package()

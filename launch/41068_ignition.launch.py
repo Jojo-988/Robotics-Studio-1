@@ -284,6 +284,9 @@ def generate_launch_description():
         'parrot_camera_pitch', default_value='0.785398',
         description='Parrot camera pitch in radians; pi/2 points down.',
     ))
+    for name, default in (('parrot_x', '2.0'), ('parrot_y', '0.0'), ('parrot_z', '0.8')):
+        ld.add_action(DeclareLaunchArgument(
+            name, default_value=default, description='Parrot spawn coordinate in the Gazebo world.'))
 
     # Load common Gazebo server systems from a shared config file. This keeps
     # required systems such as Sensors out of individual robot and world files,
@@ -365,9 +368,9 @@ def generate_launch_description():
         xacro_parts=['urdf_parrot', 'parrot.urdf.xacro'],
         bridge_config='gazebo_bridge_parrot1.yaml',
         localization_config='robot_localization_parrot1.yaml',
-        x='2.0',
-        y='0.0',
-        z='0.8',
+        x=LaunchConfiguration('parrot_x'),
+        y=LaunchConfiguration('parrot_y'),
+        z=LaunchConfiguration('parrot_z'),
         spawn_delay=6.0,
         extra_xacro_args=[' camera_pitch:=', LaunchConfiguration('parrot_camera_pitch')],
     )

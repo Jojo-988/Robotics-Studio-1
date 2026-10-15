@@ -20,21 +20,28 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, Path as RosPath
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image, Imu, PointCloud2
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
+from patrol.health import cloud_quality, image_quality, imu_quality
 
 
 class Observer(Node):
     def __init__(self):
         super().__init__('patrol_gazebo_acceptance')
         self.status = {}
+        self.last_status_wall = None
         self.states = set()
         self.transitions = []
         self.poses = []
         self.plan = []
         self.commands = []
-        self.sensor_counts = {'rgb': 0, 'lidar_points': 0}
+        self.sensor_counts = {'rgb': 0, 'depth': 0, 'lidar_points': 0, 'imu': 0}
+        self.sensor_invalid = dict.fromkeys(self.sensor_counts, 0)
+        self.sensor_invalid_examples = []
+        self.survey_sensor_counts = dict.fromkeys(self.sensor_counts, 0)
+        self.survey_min_fraction = {'depth': 1.0, 'lidar_points': 1.0}
+        self.sensor_last_stamp = {}
         self.previous = None
         # Independent whole-cell check from measured odometry, for the default 25 m square.
         centres = np.arange(-12.25, 12.5, .5)
@@ -48,10 +55,13 @@ class Observer(Node):
         self.create_subscription(Odometry, '/parrot1/odometry', self.on_odom, qos_profile_sensor_data)
         self.create_subscription(Twist, '/parrot1/cmd_vel', self.on_command, 10)
         self.create_subscription(Image, '/parrot1/camera/image', self.on_rgb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/parrot1/camera/depth/image', self.on_depth, qos_profile_sensor_data)
         self.create_subscription(PointCloud2, '/parrot1/scan/points', self.on_cloud, qos_profile_sensor_data)
+        self.create_subscription(Imu, '/parrot1/imu', self.on_imu, qos_profile_sensor_data)
         self.pause_client = self.create_client(SetBool, '/parrot1/patrol/pause')
 
     def on_status(self, msg):
+        self.last_status_wall = time.monotonic()
         self.status = json.loads(msg.data)
         state = self.status['state']
         self.states.add(state)
@@ -63,12 +73,36 @@ class Observer(Node):
         self.plan = [(p.pose.position.x, p.pose.position.y, p.pose.position.z) for p in msg.poses]
 
     def on_rgb(self, msg):
-        if msg.width and msg.height and msg.data:
-            self.sensor_counts['rgb'] += 1
+        self.record_sensor('rgb', msg, image_quality(msg))
+
+    def on_depth(self, msg):
+        self.record_sensor('depth', msg, image_quality(msg, depth=True))
 
     def on_cloud(self, msg):
-        if msg.width*msg.height and msg.data:
-            self.sensor_counts['lidar_points'] += 1
+        self.record_sensor('lidar_points', msg, cloud_quality(msg))
+
+    def on_imu(self, msg):
+        self.record_sensor('imu', msg, imu_quality(msg))
+
+    def record_sensor(self, name, msg, result):
+        valid, reason, metrics = result
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+        if stamp <= self.sensor_last_stamp.get(name, -1):
+            valid = False
+            reason = 'Timestamp did not advance'
+        self.sensor_last_stamp[name] = stamp
+        if not valid:
+            self.sensor_invalid[name] += 1
+            if len(self.sensor_invalid_examples) < 10:
+                self.sensor_invalid_examples.append({'sensor': name, 'stamp': stamp, 'reason': reason,
+                                                     'metrics': metrics, 'state': self.status.get('state'),
+                                                     'pose': self.poses[-1][1:4] if self.poses else None})
+            return
+        self.sensor_counts[name] += 1
+        if self.status.get('state') == 'PATROL':
+            self.survey_sensor_counts[name] += 1
+            if name in self.survey_min_fraction:
+                self.survey_min_fraction[name] = min(self.survey_min_fraction[name], metrics['valid_fraction'])
 
     def on_command(self, msg):
         self.commands.append((msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.z))
@@ -111,21 +145,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=Path('patrol_validation'))
     parser.add_argument('--timeout', type=float, default=1200)
+    parser.add_argument('--mode', choices=('standalone', 'attach'), default='standalone')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     # A separate DDS domain and Gazebo transport partition avoid other simulations.
-    os.environ.setdefault('ROS_DOMAIN_ID', '191')
+    os.environ.setdefault('ROS_DOMAIN_ID', '70')
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
-    os.environ.setdefault('IGN_PARTITION', 'patrol_validation_'+str(os.getpid()))
-    os.environ.setdefault('GZ_PARTITION', os.environ['IGN_PARTITION'])
+    os.environ['IGN_PARTITION'] = 'patrol_validation_' + str(os.getpid())
+    os.environ['GZ_PARTITION'] = os.environ['IGN_PARTITION']
+    os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
     os.environ['ROS_LOG_DIR'] = str(args.output.resolve()/'ros_logs')
     rclpy.init()
     node = Observer()
-    result = {'success': False, 'world': 'large_demo', 'area_m': [25,25],
+    result = {'success': False, 'mode': args.mode, 'world': 'large_demo', 'area_m': [25,25],
               'target_altitude_m': 15., 'footprint_diameter_m': 6.,
               'coverage_model': 'Geometric circular footprint; no occlusion or image-quality guarantee.'}
     log = (args.output/'gazebo_launch.log').open('w')
     process = None
+    simulation = None
     start = time.monotonic()
     next_report = start
     paused_at = None
@@ -133,9 +170,17 @@ def main():
     pause_done = False
     complete_at = None
     try:
+        if args.mode == 'attach':
+            simulation = subprocess.Popen(
+                ['ros2', 'launch', '41068_ignition_bringup', '41068_ignition.launch.py',
+                 'world:=large_demo', 'gz_gui:=false', 'husky:=false', 'parrot:=true',
+                 'slam:=false', 'nav2:=false', 'rviz:=false',
+                 'parrot_x:=0.0', 'parrot_y:=-8.0', 'parrot_z:=0.8',
+                 'parrot_camera_pitch:=1.5707963267948966'],
+                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         process = subprocess.Popen(
             ['ros2','launch','41068_ignition_bringup','41068_coverage_patrol.launch.py',
-             'world:=large_demo','gz_gui:=false'],
+             'world:=large_demo','gz_gui:=false', 'rendering:=software', 'mode:=' + args.mode],
             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         while time.monotonic()-start < args.timeout:
             rclpy.spin_once(node, timeout_sec=.1)
@@ -151,6 +196,10 @@ def main():
                 next_report = now+20
             if process.poll() is not None:
                 raise RuntimeError(f'Launch exited with code {process.returncode}; see gazebo_launch.log')
+            if simulation is not None and simulation.poll() is not None:
+                raise RuntimeError('Base simulation exited during attach-mode acceptance')
+            if now - (node.last_status_wall or start) > 20:
+                raise RuntimeError('Patrol status heartbeat missing for 20 s; inspect node exit / launch log')
             if state in ('ERROR','STOPPED'):
                 raise RuntimeError('Patrol failed: '+node.status.get('reason',''))
             if now-start > 45 and not node.poses:
@@ -196,6 +245,9 @@ def main():
                 assert pause_done, 'Pause/resume was not exercised'
                 assert node.sensor_counts['rgb'] > 0, 'No camera images'
                 assert node.sensor_counts['lidar_points'] > 0, 'No lidar point clouds'
+                assert all(count > 0 for count in node.survey_sensor_counts.values()), 'Missing valid survey sensor data'
+                assert not any(node.sensor_invalid.values()), 'Invalid or frozen sensor data received'
+                assert node.status.get('flight_ready'), 'Mission completed without healthy required streams'
                 assert max(p[3] for p in node.poses) < 15.5, 'Unexpected altitude overshoot'
                 result['success'] = True
                 break
@@ -204,19 +256,24 @@ def main():
     except Exception as exc:
         result['error'] = str(exc)
     finally:
-        if process is not None and process.poll() is None:
-            os.killpg(process.pid, signal.SIGINT)
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGTERM)
+        for child in (process, simulation):
+            if child is not None and child.poll() is None:
+                os.killpg(child.pid, signal.SIGINT)
                 try:
-                    process.wait(timeout=5)
+                    child.wait(timeout=15)
                 except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=5)
+                    os.killpg(child.pid, signal.SIGTERM)
+                    try:
+                        child.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(child.pid, signal.SIGKILL)
+                        child.wait(timeout=5)
         result.update(final_status=node.status, states=sorted(node.states),
                       odometry_samples=len(node.poses), sensor_messages=node.sensor_counts,
+                      sensor_invalid_messages=node.sensor_invalid,
+                      sensor_invalid_examples=node.sensor_invalid_examples,
+                      survey_sensor_messages=node.survey_sensor_counts,
+                      survey_min_valid_fraction=node.survey_min_fraction,
                       transitions=[dict(t, wall_time=round(t['wall_time']-start,2)) for t in node.transitions])
         with (args.output/'trajectory.csv').open('w',newline='') as stream:
             writer=csv.writer(stream)
