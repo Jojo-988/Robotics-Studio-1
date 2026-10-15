@@ -1,5 +1,8 @@
 # 41068 Ignition Bringup
 
+**Husky rover:** see the [Rover simulation quick start](docs/ROVER_QUICKSTART.md)
+for dependencies, build, launch and coordinate navigation commands.
+
 ## Parrot automatic area coverage
 
 The dedicated coverage launch takes off to 15 m, surveys the default 25 x 25 m
