@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
 
-=======
->>>>>>> 328ebf7b057b5e78b0447bc7fdb6dee282e87061
 import json
 import math
 import signal
