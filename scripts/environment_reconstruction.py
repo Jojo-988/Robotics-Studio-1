@@ -108,13 +108,7 @@ class Environment_Reconstruction(Node):
         #set the pointcloud to the global coordinate frame
         point_cloud.transform(pose_matrix)
 
-        # integrate pointcloud into mesh
-        # self.tsdf_volume.integrate(
-        #     o3d.geometry.RGBDImage(), 
-        #     intrinsic=o3d.camera.PinholeCameraIntrinsic(),
-        #     extrinsic=np.eye(4)
-        #     )
-
+        # collect points in point cloud to later export when the timer loops
         self.global_point_cloud += point_cloud
 
         self.frame_count += 1
@@ -126,9 +120,7 @@ class Environment_Reconstruction(Node):
         if self.frame_count == 0:
             return
 
-        # get mesh from buffer
-        # mesh = self.tsdf_volume.extract_triangle_mesh()
-
+        # get mesh from point cloud
         mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(self.global_point_cloud, depth=9)
         mesh.compute_vertex_normals()
 

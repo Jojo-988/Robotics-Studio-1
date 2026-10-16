@@ -1,11 +1,133 @@
 # 41068 Ignition Bringup
 
+**Husky rover:** see the [Rover simulation quick start](docs/ROVER_QUICKSTART.md)
+for dependencies, build, launch and coordinate navigation commands.
+
+## Parrot automatic area coverage
+
+The dedicated coverage launch takes off to 15 m, surveys the default 25 x 25 m
+forest with a lawnmower route, and returns to hover above its starting position.
+It uses 3D Gazebo odometry and points the camera downward.
+The dedicated coverage launch spawns at **(0, -8, 0.8)** in `large_demo`.
+The previous (2, 0) takeoff column produces completely near-clipped depth frames
+around z=3.94 m in this forest. Choose a clear takeoff column instead of disabling
+depth validation. Standalone `spawn_x`, `spawn_y`, `spawn_z` select the start;
+the general simulator exposes `parrot_x`, `parrot_y`, `parrot_z` and retains its
+old defaults. When preparing an existing simulation for attach mode, pass
+`parrot_x:=0.0 parrot_y:=-8.0 parrot_z:=0.8` to the general launch. Attach mode
+does not move an existing robot. Recheck the takeoff column for a different world.
+
+Install declared dependencies and rebuild from your workspace root (Ubuntu 22.04,
+ROS 2 Humble and Gazebo Fortress):
+
+```bash
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install --packages-select 41068_ignition_bringup
+source install/setup.bash
+```
+
+If rosdep has never been initialized, run `sudo rosdep init` once and `rosdep update`
+before installing dependencies. From the repository root:
+
+```bash
+bash scripts/start_coverage_patrol.sh --check
+bash scripts/start_coverage_patrol.sh mode:=standalone
+# WSL / graphics compatibility option (only when needed):
+bash scripts/start_coverage_patrol.sh mode:=standalone rendering:=software
+```
+
+The helper finds a built workspace by walking up from its own location; set
+`PATROL_WORKSPACE` for a separate install workspace. Preflight checks the selected
+package prefix, required ROS/Python packages, executable and environment values.
+It reports missing dependencies and conflicting overlays before launching.
+
+Standalone mode defaults to domain **68** and localhost-only **if these variables
+are unset**. Existing `ROS_DOMAIN_ID` / `ROS_LOCALHOST_ONLY` are respected;
+`PATROL_ROS_DOMAIN_ID` explicitly overrides the domain. Stop the previous patrol
+with Ctrl+C before launching another on the same ROS domain. Domains isolate ROS;
+Gazebo Transport additionally needs its own partition. The launch file creates a
+fresh partition in standalone mode, including when invoked directly with
+`ros2 launch`. `partition:=team_session` explicitly selects a shared partition.
+
+Rendering defaults to `auto`, preserving the graphics environment. `software`
+sets `LIBGL_ALWAYS_SOFTWARE=1`, while `hardware` sets it to `0`. `gz_gui:=false`
+hides the Gazebo GUI; camera/lidar still need a functioning rendering context.
+
+To attach patrol to a running simulation, source the same workspace and select
+the same domain/network settings as that simulation. It must already provide the
+`parrot1` robot, downward camera, raw 3D odometry, sensor bridges and `/clock`:
+
+```bash
+export ROS_DOMAIN_ID=68        # replace with the existing simulation's domain
+export ROS_LOCALHOST_ONLY=1    # use 0 for a configured multi-computer setup
+bash scripts/start_coverage_patrol.sh mode:=attach
+```
+
+Attach mode creates only the patrol node and preserves existing transport and
+graphics settings. The legacy `start_sim:=false` still selects attach mode and
+overrides `mode` if both are supplied. Prefer using only `mode` in new commands.
+Direct launch after sourcing supports the same arguments:
+
+```bash
+ros2 launch 41068_ignition_bringup 41068_coverage_patrol.launch.py mode:=standalone rendering:=software
+```
+
+Direct launch inherits the terminal's ROS domain/network settings. Monitor from a
+second terminal with the same domain and localhost setting:
+
+```bash
+ros2 topic echo /parrot1/patrol/status std_msgs/msg/String
+```
+
+The node waits for advancing `/clock`, five fresh valid odometry samples, a command
+subscriber, and two valid samples from each required sensor, followed by 0.5 s of
+stable readiness. It detects multiple ROS clock/odometry/velocity publishers.
+Startup expires after 90 wall seconds with a specific failure reason. Spawn delays
+in the general simulator launch only order process startup; they do not authorize
+takeoff. Flight readiness is determined by live data.
+
+RGB checks cover encoding, frame, dimensions and payload/stride consistency. Depth
+and lidar additionally require finite in-range values in at least 5% of samples;
+NaN, infinity, zero/out-of-range depth, invalid XYZ fields, stale or frozen
+timestamps fail readiness. The depth clip is 40 m to support the 15 m survey
+height. IMU checks require finite angular velocity / acceleration and, when
+provided, a normalized orientation quaternion. Status `health` reports accepted/rejected counts, data age and valid
+fractions. These are transport/data usability checks, not object recognition,
+camera calibration or proof of terrain visibility.
+`health_hold_count` / `health_hold_seconds` record automatic holds, and each
+stream's `max_gap_wall_s` helps distinguish intermittent delivery from invalid payloads.
+
+Data loss during flight sends zero velocity, pauses the mission and breaks the
+coverage trace. Recovery resumes the same target and extends its deadline; an
+operator pause remains in effect. A 30 s persistent failure latches `ERROR` and
+requires restarting the node. Clock rollback, invalid pose and competing
+controllers also latch an error. These behaviors apply to the simplified Gazebo
+velocity model; they are not a real-aircraft landing/failsafe controller.
+
+Readiness thresholds and topics are in `config/coverage_patrol.yaml`.
+`require_sensors: false` is available for explicit controller-only experiments;
+the default acceptance configuration keeps it **true**. Coverage remains a
+geometric footprint estimate, and return means hovering over the start XY at
+survey height, not landing. Run regression and full simulation acceptance with:
+
+```bash
+# From workspace root:
+colcon test --packages-select 41068_ignition_bringup
+colcon test-result --verbose
+# From repository root, with no other controller in the selected ROS domain:
+ROS_DOMAIN_ID=70 python3 test/validate_patrol_gazebo.py --output /tmp/patrol_validation
+# Also test attaching to a separately launched simulator (the validator owns/cleans up both):
+ROS_DOMAIN_ID=70 python3 test/validate_patrol_gazebo.py --mode attach --output /tmp/patrol_attach_validation
+```
+
+This mode owns the Parrot velocity command. Run it separately from Parrot Nav2,
+GUI aerial goal commands, mapping missions, and keyboard teleoperation.
+
 ## Husky goal navigation and avoidance integration
 
 The new Husky module accepts a target position and heading, plans with NavFn A*,
 and follows the path with Nav2 DWB or a teammate's `FollowPath` action server.
-See [the rover navigation guide](docs/ROVER_NAVIGATION.md) for build/run commands,
-the ROS interface contract, pause/cancel/replanning, and integration tests.
 
 ```bash
 ros2 launch 41068_ignition_bringup 41068_rover_navigation.launch.py

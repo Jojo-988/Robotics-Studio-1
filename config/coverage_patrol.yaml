@@ -28,3 +28,21 @@
     base_frame: parrot1_base_link
     mission_frame: world
     cmd_vel_topic: cmd_vel
+    # Wall-clock startup/loss limits; no motion until all required streams are stable.
+    startup_timeout: 90.0
+    ready_hold: 0.5
+    health_loss_timeout: 30.0
+    require_sensors: true
+    sensor_timeout: 5.0  # GPU sensors run at 3 Hz; allow slower software rendering.
+    rgb_topic: camera/image
+    depth_topic: camera/depth/image
+    lidar_topic: scan/points
+    camera_frame: parrot1_camera_link
+    lidar_frame: parrot1_base_scan
+    imu_topic: imu
+    imu_frame: parrot1_imu_link
+    depth_min: 0.4
+    depth_max: 40.0
+    lidar_min: 0.2
+    lidar_max: 40.0
+    sensor_min_valid_fraction: 0.05

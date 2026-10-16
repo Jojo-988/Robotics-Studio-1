@@ -94,7 +94,9 @@
     <plugin
       filename="ignition-gazebo-odometry-publisher-system"
       name="ignition::gazebo::systems::OdometryPublisher">
-      <topic>model/${gz_model_name}/odometry</topic>
+      <odom_topic>/model/${gz_model_name}/odometry</odom_topic>
+      <!-- Coverage flight needs actual z, roll and pitch feedback. -->
+      <dimensions>3</dimensions>
       <odom_publish_frequency>20</odom_publish_frequency>
       <odom_frame>${prefix}odom</odom_frame>
       <robot_base_frame>${prefix}base_link</robot_base_frame>
@@ -130,8 +132,8 @@
           <vertical>
             <samples>128</samples> <!-- Number of vertical planes/layers -->
             <resolution>1</resolution>
-            <min_angle>-1.5707</min_angle> <!-- Approx -15 degrees -->
-            <max_angle>0.0</max_angle>  <!-- Approx +15 degrees -->
+            <min_angle>-1.5707</min_angle> <!-- Downwards: approximately -90 degrees -->
+            <max_angle>0.0</max_angle>  <!-- Horizontal -->
           </vertical>
         </scan>
         <range>
@@ -162,17 +164,14 @@
           <near>0.1</near>
           <far>40</far>
         </clip>
-        <!-- depth_camera near/far clip seems to be ignored for some reason -->
-        <!--    We're using Ignition Gazebo Fortress, which uses sdf format 1.9: http://sdformat.org/tutorials?tut=roadmap -->
-        <!--    This takes the depth_camera parameter with near / far clip http://sdformat.org/spec?ver=1.4&elem=sensor  -->
-        <!-- We also use ign sensors v6 ( run ls | grep libignition-sensors in /usr/lib/x86_64-linux-gnu)-->
-        <!-- Looking at the source code, the sdf sets HasDepthCamera() and corresponding HasDepthNearClip() & HasDepthFarClip() which are used in RgbdCameraSensor.cc, so this should work? -->
-        <!--    SDF description of Camera: https://github.com/gazebosim/sdformat/blob/sdf9/src/Camera.cc#L598-->
-        <!--    Camera sensor source code: https://github.com/gazebosim/gz-sensors/blob/ign-sensors6/src/RgbdCameraSensor.cc#L311  -->
+        <!-- Fortress applies depth clipping after rendering. Near-clipped samples
+             become -inf and far-clipped samples +inf; patrol health checks reject
+             frames with insufficient usable depths. Keep the takeoff column clear. -->
         <depth_camera>
           <clip>
             <near>0.4</near>
-            <far>10</far>
+            <!-- Match the 40 m RGB clip so depth is usable at the 15 m survey height. -->
+            <far>40</far>
           </clip>
         </depth_camera>
       </camera>
