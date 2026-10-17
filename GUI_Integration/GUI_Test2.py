@@ -327,6 +327,8 @@ class Dashboard:
         self.patrol_lock = threading.RLock()
         self.patrol_status = 'IDLE'
         self.patrol_stopping = False
+        self.patrol_shutdown_thread = None
+        self.closing = False
         outer = tk.Frame(root, bg=self.BG)
         outer.pack(fill='both', expand=True)
         canvas = tk.Canvas(outer, bg=self.BG, highlightthickness=0)
@@ -417,6 +419,8 @@ class Dashboard:
     
     # Starts the coverage patrol by launching a ROS2 launch file with specified parameters; checks for existing patrol or manual goals
     def start_patrol(self):
+        if self.closing or self.patrol_stopping:
+            return
         if self.patrol_active():
             self.feedback.config(text='Patrol already running. Stop it before restarting.')
             return
@@ -450,33 +454,66 @@ class Dashboard:
                 self.patrol_status = f'LAUNCH ERROR: {exc}'
             self.feedback.config(text=f'Unable to launch patrol: {exc}')
 
-    # Stops the coverage patrol by sending a termination signal to the process
-    def stop_patrol(self):
-        with self.patrol_lock:
-            proc = self.patrol_process
-            if proc is None or proc.poll() is not None or self.patrol_stopping:
-                return
-            self.patrol_stopping = True
-            self.patrol_status = 'STOPPING (not an emergency stop)'
-        def shutdown():
-            try:
-                os.killpg(proc.pid, signal.SIGINT)
+    # Shut down the ROS launch process group, including any child patrol node.
+    # This is also called synchronously during GUI exit.
+    def _shutdown_patrol(self, proc):
+        try:
+            # A process group may still contain children after the launch parent exits.
+            # Send each signal to the group, not just the launch parent.
+            for sig, timeout in ((signal.SIGINT, 8),
+                                 (signal.SIGTERM, 4),
+                                 (signal.SIGKILL, 2)):
                 try:
-                    proc.wait(timeout=8)
+                    os.killpg(proc.pid, sig)
+                except ProcessLookupError:
+                    break
+                except OSError as exc:
+                    print(f'Patrol shutdown signal failed: {exc}', flush=True)
+                    break
+                try:
+                    proc.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    os.killpg(proc.pid, signal.SIGTERM)
+                    pass
+                # The launch parent exiting does not prove its child has exited.
+                # Check whether any members of its dedicated group remain.
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
                     try:
-                        proc.wait(timeout=4)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                        proc.wait(timeout=2)
-            except (ProcessLookupError, OSError, subprocess.TimeoutExpired):
-                pass
+                        os.killpg(proc.pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.1)
+                else:
+                    continue
+                break
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                print('WARNING: patrol launch did not exit cleanly.', flush=True)
+        finally:
             with self.patrol_lock:
                 if self.patrol_process is proc:
-                    self.patrol_status = 'STOPPED — verify drone motion has ceased'
-                    self.patrol_stopping = False
-        threading.Thread(target=shutdown, daemon=True).start()
+                    self.patrol_process = None
+                    self.patrol_status = 'STOPPED'
+                self.patrol_stopping = False
+
+    def stop_patrol(self, wait=False):
+        with self.patrol_lock:
+            proc = self.patrol_process
+            thread = self.patrol_shutdown_thread
+            if self.patrol_stopping:
+                pass
+            elif proc is None:
+                return
+            else:
+                self.patrol_stopping = True
+                self.patrol_status = 'STOPPING (not an emergency stop)'
+                thread = threading.Thread(
+                    target=self._shutdown_patrol, args=(proc,), daemon=False)
+                self.patrol_shutdown_thread = thread
+                thread.start()
+        if wait and thread is not None and thread is not threading.current_thread():
+            thread.join()
 
     # Sends a navigation goal to the specified robot; checks for active patrol before sending a manual goal
     def send_goal(self, robot):
@@ -504,6 +541,8 @@ class Dashboard:
         self.feedback.config(text='Cancel requested; verify robot motion stops.' if ok else 'Cancel unavailable/no active goal.')
 
     def update(self):
+        if self.closing:
+            return
         with self.node.lock:
             frames = dict(self.node.frames)
             positions = dict(self.node.positions)
@@ -546,19 +585,34 @@ class Dashboard:
         self.root.after(150, self.update)
 
     def close(self):
-        self.stop_patrol()
+        if self.closing:
+            return
+        self.closing = True
+        self.patrol_start_button.config(state='disabled')
+        self.patrol_stop_button.config(state='disabled')
+        self.stop_patrol(wait=True)
         self.root.destroy()
 
 
 def main():
     rclpy.init()
     node = BridgeNode()
-    worker = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
+    def spin_ros():
+        try:
+            rclpy.spin(node)
+        except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
+            pass
+
+    worker = threading.Thread(target=spin_ros, daemon=False)
     worker.start()
     try:
         root = tk.Tk()
-        Dashboard(root, node)
-        root.mainloop()
+        dashboard = Dashboard(root, node)
+        try:
+            root.mainloop()
+        finally:
+            # Also handles Ctrl+C and exceptions, not only the window X button.
+            dashboard.close()
     finally:
         if rclpy.ok():
             rclpy.shutdown()
