@@ -45,4 +45,4 @@
     depth_max: 40.0
     lidar_min: 0.2
     lidar_max: 40.0
-    sensor_min_valid_fraction: 0.05
+    sensor_min_valid_fraction: 0.04

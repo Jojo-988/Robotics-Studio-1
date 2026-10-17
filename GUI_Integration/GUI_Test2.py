@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import json
 import math
+import os
+import signal
+import subprocess
+import time
 import threading
 import tkinter as tk
 from tkinter import ttk
@@ -21,7 +25,7 @@ from sensor_msgs.msg import Image, LaserScan
 from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool, Trigger
 
-# Adjust these to match `ros2 topic list -t` and `ros2 action list -t`.
+# TOPIC LIST CONFIRGURATION, MATCH THE ROS2 TOPIC/ACTION LIST
 CONFIG = {
     'rover': {
         'name': 'Husky1', 'camera': '/husky1/camera/image',
@@ -79,7 +83,7 @@ def process_frame(frame):
     fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
 
-
+# ROS2 Node that bridges sensor data and navigation actions to the GUI
 class BridgeNode(Node):
     def __init__(self):
         super().__init__('forest_monitoring_gui')
@@ -110,10 +114,12 @@ class BridgeNode(Node):
         self.rover_cancel = self.create_client(Trigger, rover['cancel'])
         self.fire_pub = self.create_publisher(Bool, '/husky1/vision/fire_detected', 10)
 
+    # Thread-safe status update
     def set_status(self, robot, message):
         with self.lock:
             self.status[robot] = message
-
+    
+    # Callback for image messages; processes the frame and updates detection results
     def on_image(self, robot, msg):
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -126,11 +132,13 @@ class BridgeNode(Node):
         except Exception as exc:
             self.get_logger().warning(f'{robot} image error: {exc}')
 
+    # Callback for odometry messages; updates the robot's position
     def on_odom(self, robot, msg):
         p = msg.pose.pose.position
         with self.lock:
             self.positions[robot] = (p.x, p.y, p.z)
 
+    # Callback for laser scan messages; analyzes the scan data to determine obstacle proximity
     def on_scan(self, robot, msg):
         values = np.asarray(msg.ranges, dtype=float)
         if values.size == 0:
@@ -148,7 +156,8 @@ class BridgeNode(Node):
         with self.lock:
             self.obstacles[robot] = result
             self.last_sensor_time[robot] = self.get_clock().now().nanoseconds / 1e9
-
+    
+    # Callback for rover status messages; parses the JSON data and updates the status
     def on_rover_status(self, msg):
         try:
             data = json.loads(msg.data)
@@ -156,14 +165,16 @@ class BridgeNode(Node):
         except (ValueError, TypeError):
             message = msg.data
         self.set_status('rover', message)
-
+    
+    # Returns a string indicating the readiness of the navigation interfaces for the specified robot
     def readiness(self, robot):
         if robot == 'rover':
             return ('custom goal subscribers: ' + str(self.rover_goal_pub.get_subscription_count()) +
                     f' | pause: {self.rover_pause.service_is_ready()}' +
                     f' | cancel: {self.rover_cancel.service_is_ready()}')
         return 'Nav2 action ready: ' + str(self.nav_clients['aerial'].server_is_ready())
-
+    
+    # Sends a navigation goal to the rover; checks for subscribers and publishes the goal if available
     def send_rover_goal(self, x, y, yaw):
         if self.rover_goal_pub.get_subscription_count() == 0:
             self.set_status('rover', 'ERROR: no /husky1/rover/goal subscriber; start rover navigation node')
@@ -172,7 +183,8 @@ class BridgeNode(Node):
         self.rover_goal_pub.publish(msg)
         self.set_status('rover', 'Goal published; awaiting rover status')
         return True
-
+    
+    # Creates a PoseStamped message for the specified robot with the given position and orientation
     def make_pose(self, robot, x, y, z, yaw):
         msg = PoseStamped()
         msg.header.frame_id = CONFIG[robot]['frame']
@@ -182,7 +194,8 @@ class BridgeNode(Node):
         msg.pose.orientation.z = math.sin(angle)
         msg.pose.orientation.w = math.cos(angle)
         return msg
-
+    
+    # Sends a navigation goal to the aerial robot (Parrot); checks for action server readiness and manages goal state
     def send_aerial_goal(self, x, y, z, yaw):
         robot = 'aerial'
         if not self.nav_clients[robot].server_is_ready():
@@ -206,6 +219,7 @@ class BridgeNode(Node):
             self.set_status(robot, f'Goal send error: {exc}')
             return False
 
+    # Callback for the response to a navigation goal; updates the status and manages the goal handle
     def on_goal_response(self, robot, future):
         try:
             handle = future.result()
@@ -224,7 +238,8 @@ class BridgeNode(Node):
                 self.pending[robot] = False
                 self.cancel_queued[robot] = False
             self.set_status(robot, f'Goal response error: {exc}')
-
+    
+    # Callback for the result of a navigation goal; updates the status and clears the goal handle
     def on_goal_result(self, robot, future):
         try:
             code = future.result().status
@@ -238,7 +253,8 @@ class BridgeNode(Node):
             self.pending[robot] = False
             self.cancel_queued[robot] = False
             self.status[robot] = message
-
+    
+    # Cancels the current navigation goal for the aerial robot
     def cancel_aerial(self):
         with self.lock:
             handle = self.handles['aerial']
@@ -253,14 +269,16 @@ class BridgeNode(Node):
         future = handle.cancel_goal_async()
         future.add_done_callback(self.on_cancel_response)
         return True
-
+    
+    # updates the status based on whether the cancel was accepted
     def on_cancel_response(self, future):
         try:
             if not future.result().goals_canceling:
                 self.set_status('aerial', 'Cancel rejected by action server')
         except Exception as exc:
             self.set_status('aerial', f'Cancel error: {exc}')
-
+    
+    # Pauses or resumes the rover's navigation based on the 'paused' parameter
     def pause_rover(self, paused):
         if not self.rover_pause.service_is_ready():
             self.set_status('rover', 'Pause service unavailable')
@@ -277,6 +295,7 @@ class BridgeNode(Node):
             lambda f: self.service_response('rover', f, 'Cancel'))
         return True
 
+    # Handles the response from a service call; updates the status based on the result
     def service_response(self, robot, future, name):
         try:
             response = future.result()
@@ -284,7 +303,7 @@ class BridgeNode(Node):
         except Exception as exc:
             self.set_status(robot, f'{name} service error: {exc}')
 
-
+# GUI Dashboard class that creates the main window and manages the interface
 class Dashboard:
     BG = '#15202b'
     FG = '#e8f1f8'
@@ -304,6 +323,10 @@ class Dashboard:
         self.status_labels = {}
         self.ready_labels = {}
         self.inputs = {}
+        self.patrol_process = None
+        self.patrol_lock = threading.RLock()
+        self.patrol_status = 'IDLE'
+        self.patrol_stopping = False
         outer = tk.Frame(root, bg=self.BG)
         outer.pack(fill='both', expand=True)
         canvas = tk.Canvas(outer, bg=self.BG, highlightthickness=0)
@@ -358,16 +381,108 @@ class Dashboard:
             self.ready_labels[robot].grid(row=3, column=0, columnspan=len(names)+2, sticky='w', padx=6, pady=4)
             self.status_labels[robot] = self.label(frame, 'Waiting for navigation...', wrap=1050)
             self.status_labels[robot].grid(row=4, column=0, columnspan=len(names)+2, sticky='w', padx=6, pady=4)
+        patrol = tk.LabelFrame(body, text='PARROT AUTONOMOUS COVERAGE PATROL',
+                               bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
+        patrol.pack(fill='x', padx=20, pady=8)
+        self.label(patrol, 'Altitude (m)').grid(row=0, column=0, padx=8, pady=8)
+        self.patrol_altitude = ttk.Entry(patrol, width=10)
+        self.patrol_altitude.insert(0, '15.0')
+        self.patrol_altitude.grid(row=0, column=1, padx=5)
+        self.patrol_repeat = tk.BooleanVar(value=False)
+        tk.Checkbutton(patrol, text='Repeat patrol', variable=self.patrol_repeat,
+                       bg=self.BG, fg=self.FG, selectcolor=self.BG,
+                       activebackground=self.BG, activeforeground=self.FG).grid(row=0, column=2, padx=8)
+        self.patrol_start_button = tk.Button(patrol, text='START PATROL', bg='#238c55',
+                                             fg='white', command=self.start_patrol)
+        self.patrol_start_button.grid(row=0, column=3, padx=8)
+        self.patrol_stop_button = tk.Button(patrol, text='STOP PATROL', bg='#b72d32',
+                                            fg='white', command=self.stop_patrol)
+        self.patrol_stop_button.grid(row=0, column=4, padx=8)
+        self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
+        self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
         self.feedback = self.label(body, 'Ready. LiDAR warnings do not stop robots. Parrot Nav2 may ignore Z altitude.', wrap=1080)
         self.feedback.pack(pady=9)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
 
+    # Setup the label widget with specified text, boldness, and wrap length
     def label(self, parent, text, bold=False, wrap=0):
         return tk.Label(parent, text=text, bg=self.BG, fg=self.MUTED,
                         font=('Arial', 10, 'bold' if bold else 'normal'), wraplength=wrap)
+    
+    # Checks if the patrol process is currently active (running and not stopped)
+    def patrol_active(self):
+        with self.patrol_lock:
+            return self.patrol_process is not None and self.patrol_process.poll() is None
+    
+    # Starts the coverage patrol by launching a ROS2 launch file with specified parameters; checks for existing patrol or manual goals
+    def start_patrol(self):
+        if self.patrol_active():
+            self.feedback.config(text='Patrol already running. Stop it before restarting.')
+            return
+        with self.node.lock:
+            manual_busy = (self.node.pending['aerial'] or
+                           self.node.handles['aerial'] is not None)
+        if manual_busy:
+            self.feedback.config(text='Cancel the active Parrot manual goal before starting patrol.')
+            return
+        try:
+            altitude = float(self.patrol_altitude.get())
+            if not math.isfinite(altitude) or altitude <= 0:
+                raise ValueError('altitude must be positive and finite')
+        except ValueError:
+            self.feedback.config(text='Enter a positive finite patrol altitude.')
+            return
+        command = [
+            'ros2', 'launch', '41068_ignition_bringup',
+            '41068_coverage_patrol.launch.py', 'mode:=attach',
+            f'altitude:={altitude}',
+            f'repeat:={str(self.patrol_repeat.get()).lower()}',
+        ]
+        try:
+            with self.patrol_lock:
+                self.patrol_process = subprocess.Popen(command, start_new_session=True)
+                self.patrol_stopping = False
+                self.patrol_status = f'STARTING (PID {self.patrol_process.pid})'
+            self.feedback.config(text='Coverage patrol launch started. Check terminal logs and mission readiness.')
+        except (OSError, ValueError) as exc:
+            with self.patrol_lock:
+                self.patrol_status = f'LAUNCH ERROR: {exc}'
+            self.feedback.config(text=f'Unable to launch patrol: {exc}')
 
+    # Stops the coverage patrol by sending a termination signal to the process
+    def stop_patrol(self):
+        with self.patrol_lock:
+            proc = self.patrol_process
+            if proc is None or proc.poll() is not None or self.patrol_stopping:
+                return
+            self.patrol_stopping = True
+            self.patrol_status = 'STOPPING (not an emergency stop)'
+        def shutdown():
+            try:
+                os.killpg(proc.pid, signal.SIGINT)
+                try:
+                    proc.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                    try:
+                        proc.wait(timeout=4)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                        proc.wait(timeout=2)
+            except (ProcessLookupError, OSError, subprocess.TimeoutExpired):
+                pass
+            with self.patrol_lock:
+                if self.patrol_process is proc:
+                    self.patrol_status = 'STOPPED — verify drone motion has ceased'
+                    self.patrol_stopping = False
+        threading.Thread(target=shutdown, daemon=True).start()
+
+    # Sends a navigation goal to the specified robot; checks for active patrol before sending a manual goal
     def send_goal(self, robot):
+        if robot == 'aerial' and self.patrol_active():
+            self.feedback.config(text='Stop Coverage Patrol before sending a manual Parrot goal.')
+            return
         try:
             values = [float(e.get()) for e in self.inputs[robot]]
             if not all(math.isfinite(v) for v in values):
@@ -418,9 +533,20 @@ class Dashboard:
                 self.obstacle_labels[robot].config(text=f'Obstacle: {level} | {info}', fg=color)
             self.status_labels[robot].config(text='Navigation: ' + statuses[robot])
             self.ready_labels[robot].config(text='Interface: ' + self.node.readiness(robot))
+        with self.patrol_lock:
+            proc = self.patrol_process
+            if proc is not None and proc.poll() is not None and not self.patrol_stopping:
+                self.patrol_status = f'EXITED (code {proc.returncode})'
+            elif proc is not None and proc.poll() is None and not self.patrol_stopping:
+                self.patrol_status = f'LAUNCH RUNNING (PID {proc.pid}); check patrol logs for flight status'
+            patrol_status = self.patrol_status
+        self.patrol_label.config(text='Patrol: ' + patrol_status)
+        self.patrol_start_button.config(state='disabled' if self.patrol_active() or self.patrol_stopping else 'normal')
+        self.patrol_stop_button.config(state='normal' if self.patrol_active() and not self.patrol_stopping else 'disabled')
         self.root.after(150, self.update)
 
     def close(self):
+        self.stop_patrol()
         self.root.destroy()
 
 
