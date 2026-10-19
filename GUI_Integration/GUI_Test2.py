@@ -45,7 +45,7 @@ WARNING_DISTANCE = 2.0
 CRITICAL_DISTANCE = 0.8
 
 # Conservative manual-flight limits; tune after verifying Gazebo axes and odometry.
-MANUAL_MAX_XY =0.7       # m/s
+MANUAL_MAX_XY = 0.7       # m/s
 MANUAL_MAX_Z = 0.5        # m/s
 MANUAL_MAX_YAW = 0.6      # rad/s
 MANUAL_POSITION_TOL = 0.20  # m
