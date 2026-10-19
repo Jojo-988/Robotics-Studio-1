@@ -14,11 +14,12 @@ import numpy as np
 import rclpy
 from action_msgs.msg import GoalStatus
 from cv_bridge import CvBridge
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry
 from PIL import Image as PILImage, ImageTk
 from rclpy.action import ActionClient
+from rclpy.parameter import Parameter
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, LaserScan
@@ -36,12 +37,22 @@ CONFIG = {
     },
     'aerial': {
         'name': 'Parrot1', 'camera': '/parrot1/camera/image',
-        'odom': '/parrot1/odom', 'scan': '/parrot1/scan',
+        'odom': '/parrot1/odometry', 'scan': '/parrot1/scan',
         'action': '/parrot1/navigate_to_pose', 'frame': 'parrot1_map',
     },
 }
 WARNING_DISTANCE = 2.0
 CRITICAL_DISTANCE = 0.8
+
+# Conservative manual-flight limits; tune after verifying Gazebo axes and odometry.
+MANUAL_MAX_XY =0.7       # m/s
+MANUAL_MAX_Z = 0.5        # m/s
+MANUAL_MAX_YAW = 0.6      # rad/s
+MANUAL_POSITION_TOL = 0.20  # m
+MANUAL_YAW_TOL = math.radians(8)
+MANUAL_ODOM_TIMEOUT = 1.0 # wall seconds
+MANUAL_GOAL_TIMEOUT = 120.0
+
 
 
 def annotate_regions(frame, mask, name, color, minimum=800):
@@ -86,7 +97,8 @@ def process_frame(frame):
 # ROS2 Node that bridges sensor data and navigation actions to the GUI
 class BridgeNode(Node):
     def __init__(self):
-        super().__init__('forest_monitoring_gui')
+        super().__init__('GUI_Test2')
+        self.set_parameters([Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         self.bridge = CvBridge()
         self.lock = threading.RLock()
         self.frames = {r: None for r in CONFIG}
@@ -99,6 +111,16 @@ class BridgeNode(Node):
         self.pending = {r: False for r in CONFIG}
         self.cancel_queued = {r: False for r in CONFIG}
         self.nav_clients = {}
+        # Manual 3D flight is handled by this GUI, independently of Parrot Nav2.
+        # Only enable while Coverage Patrol is stopped.
+        self.manual_goal = None
+        self.manual_started = None
+        self.manual_pose = None
+        self.manual_odom_received = None
+        self.manual_cmd = None  # Create only during manual flight; patrol requires exclusive cmd_vel ownership.
+        self.create_subscription(Odometry, '/parrot1/odometry',
+                                 self.on_manual_odometry, qos_profile_sensor_data)
+        self.manual_timer = self.create_timer(0.05, self.manual_control_tick)
         for robot, cfg in CONFIG.items():
             self.create_subscription(Image, cfg['camera'],
                 lambda msg, r=robot: self.on_image(r, msg), qos_profile_sensor_data)
@@ -113,6 +135,95 @@ class BridgeNode(Node):
         self.rover_pause = self.create_client(SetBool, rover['pause'])
         self.rover_cancel = self.create_client(Trigger, rover['cancel'])
         self.fire_pub = self.create_publisher(Bool, '/husky1/vision/fire_detected', 10)
+
+    def on_manual_odometry(self, msg):
+        p, q = msg.pose.pose.position, msg.pose.pose.orientation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
+                         1 - 2 * (q.y * q.y + q.z * q.z))
+        with self.lock:
+            self.manual_pose = (p.x, p.y, p.z, yaw)
+            self.manual_odom_received = time.monotonic()
+
+    @staticmethod
+    def wrap_angle(angle):
+        return math.atan2(math.sin(angle), math.cos(angle))
+
+    @staticmethod
+    def limit(value, bound):
+        return max(-bound, min(bound, value))
+
+    def stop_manual(self, reason='Manual goal canceled'):
+        # Release the publisher, not just the goal. Coverage Patrol refuses to
+        # start if ANY other cmd_vel publisher exists, even an idle one.
+        with self.lock:
+            was_active = self.manual_goal is not None
+            self.manual_goal = None
+            self.manual_started = None
+            self.status['aerial'] = reason
+            publisher = self.manual_cmd
+            if publisher is not None:
+                try:
+                    publisher.publish(Twist())  # Send a final zero command.
+                finally:
+                    self.destroy_publisher(publisher)
+                    self.manual_cmd = None
+        return was_active
+
+    def start_manual(self, x, y, z, yaw_degrees):
+        with self.lock:
+            if self.manual_odom_received is None or time.monotonic() - self.manual_odom_received > MANUAL_ODOM_TIMEOUT:
+                self.status['aerial'] = 'ERROR: /parrot1/odometry missing or stale'
+                return False
+            if self.manual_goal is not None:
+                self.status['aerial'] = 'Cancel the existing manual goal first'
+                return False
+            # An orphaned patrol or Parrot Nav2 must not command the same topic.
+            others = self.get_publishers_info_by_topic('/parrot1/cmd_vel')
+            if others:
+                self.status['aerial'] = 'ERROR: /parrot1/cmd_vel already owned by ' + ', '.join(
+                    f'{p.node_namespace}/{p.node_name}' for p in others)
+                return False
+            if self.manual_cmd is None:
+                self.manual_cmd = self.create_publisher(Twist, '/parrot1/cmd_vel', 10)
+            self.manual_goal = (x, y, z, math.radians(yaw_degrees))
+            self.manual_started = time.monotonic()
+            self.status['aerial'] = 'Manual 3D goal active'
+        return True
+
+    def manual_control_tick(self):
+        with self.lock:
+            goal = self.manual_goal
+            pose = self.manual_pose
+            received = self.manual_odom_received
+            started = self.manual_started
+        if goal is None:
+            return
+        now = time.monotonic()
+        if pose is None or received is None or now - received > MANUAL_ODOM_TIMEOUT:
+            self.stop_manual('ERROR: manual flight stopped: stale odometry')
+            return
+        if started is not None and now - started > MANUAL_GOAL_TIMEOUT:
+            self.stop_manual('ERROR: manual goal timed out')
+            return
+        x, y, z, yaw = pose
+        gx, gy, gz, gyaw = goal
+        ex, ey, ez = gx - x, gy - y, gz - z
+        e_yaw = self.wrap_angle(gyaw - yaw)
+        if math.hypot(ex, ey) < MANUAL_POSITION_TOL and abs(ez) < MANUAL_POSITION_TOL and abs(e_yaw) < MANUAL_YAW_TOL:
+            self.stop_manual('Manual goal reached')
+            return
+        # Odometry position is in world/odom coordinates; Twist linear X/Y is body-frame.
+        vx_world = self.limit(0.7 * ex, MANUAL_MAX_XY)
+        vy_world = self.limit(0.7 * ey, MANUAL_MAX_XY)
+        cmd = Twist()
+        cmd.linear.x = self.limit(math.cos(yaw) * vx_world + math.sin(yaw) * vy_world, MANUAL_MAX_XY)
+        cmd.linear.y = self.limit(-math.sin(yaw) * vx_world + math.cos(yaw) * vy_world, MANUAL_MAX_XY)
+        cmd.linear.z = self.limit(0.6 * ez, MANUAL_MAX_Z)
+        cmd.angular.z = self.limit(0.8 * e_yaw, MANUAL_MAX_YAW)
+        with self.lock:
+            if self.manual_goal == goal and self.manual_cmd is not None:
+                self.manual_cmd.publish(cmd)
+        self.set_status('aerial', f'Manual: distance {math.sqrt(ex*ex+ey*ey+ez*ez):.2f} m | yaw error {math.degrees(e_yaw):.1f} deg')
 
     # Thread-safe status update
     def set_status(self, robot, message):
@@ -172,7 +283,7 @@ class BridgeNode(Node):
             return ('custom goal subscribers: ' + str(self.rover_goal_pub.get_subscription_count()) +
                     f' | pause: {self.rover_pause.service_is_ready()}' +
                     f' | cancel: {self.rover_cancel.service_is_ready()}')
-        return 'Nav2 action ready: ' + str(self.nav_clients['aerial'].server_is_ready())
+        return 'Manual 3D control: ' + ('odometry ready' if self.manual_odom_received is not None and time.monotonic() - self.manual_odom_received < MANUAL_ODOM_TIMEOUT else 'waiting for /parrot1/odometry')
     
     # Sends a navigation goal to the rover; checks for subscribers and publishes the goal if available
     def send_rover_goal(self, x, y, yaw):
@@ -402,7 +513,7 @@ class Dashboard:
         self.patrol_stop_button.grid(row=0, column=4, padx=8)
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
         self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
-        self.feedback = self.label(body, 'Ready. LiDAR warnings do not stop robots. Parrot Nav2 may ignore Z altitude.', wrap=1080)
+        self.feedback = self.label(body, 'Ready. Parrot manual goals use direct 3D velocity control; stop patrol before manual flight.', wrap=1080)
         self.feedback.pack(pady=9)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
@@ -425,10 +536,16 @@ class Dashboard:
             self.feedback.config(text='Patrol already running. Stop it before restarting.')
             return
         with self.node.lock:
-            manual_busy = (self.node.pending['aerial'] or
-                           self.node.handles['aerial'] is not None)
+            manual_busy = self.node.manual_goal is not None
         if manual_busy:
             self.feedback.config(text='Cancel the active Parrot manual goal before starting patrol.')
+            return
+        # The patrol preflight requires exclusive ownership of /parrot1/cmd_vel.
+        # Do not start if the GUI or another controller still owns the topic.
+        publishers = self.node.get_publishers_info_by_topic('/parrot1/cmd_vel')
+        if publishers:
+            owners = ', '.join(f'{p.node_namespace}/{p.node_name}' for p in publishers)
+            self.feedback.config(text='Cannot start patrol: /parrot1/cmd_vel publisher(s): ' + owners)
             return
         try:
             altitude = float(self.patrol_altitude.get())
@@ -517,7 +634,7 @@ class Dashboard:
 
     # Sends a navigation goal to the specified robot; checks for active patrol before sending a manual goal
     def send_goal(self, robot):
-        if robot == 'aerial' and self.patrol_active():
+        if robot == 'aerial' and (self.patrol_active() or self.patrol_stopping):
             self.feedback.config(text='Stop Coverage Patrol before sending a manual Parrot goal.')
             return
         try:
@@ -530,14 +647,14 @@ class Dashboard:
         if robot == 'rover':
             ok = self.node.send_rover_goal(*values)
         else:
-            ok = self.node.send_aerial_goal(*values)
-        self.feedback.config(text=(('Goal submitted to Nav2. Parrot Z movement requires altitude-capable controller.' if robot == 'aerial' else 'Goal submitted. Check status.') if ok else 'Goal NOT sent. Check status.'))
+            ok = self.node.start_manual(*values)
+        self.feedback.config(text=(('Manual 3D goal started using /parrot1/odometry and /parrot1/cmd_vel.' if robot == 'aerial' else 'Goal submitted. Check status.') if ok else 'Goal NOT sent. Check status.'))
 
     def cancel(self, robot):
         if robot == 'rover':
             ok = self.node.cancel_rover()
         else:
-            ok = self.node.cancel_aerial()
+            ok = self.node.stop_manual()
         self.feedback.config(text='Cancel requested; verify robot motion stops.' if ok else 'Cancel unavailable/no active goal.')
 
     def update(self):
@@ -590,6 +707,7 @@ class Dashboard:
         self.closing = True
         self.patrol_start_button.config(state='disabled')
         self.patrol_stop_button.config(state='disabled')
+        self.node.stop_manual('GUI closing')
         self.stop_patrol(wait=True)
         self.root.destroy()
 
