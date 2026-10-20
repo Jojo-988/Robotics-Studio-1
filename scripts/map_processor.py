@@ -48,6 +48,28 @@ class MapDataProcessor(Node):
             f'{info.origin.position.y:.2f})',
             throttle_duration_sec=2.0,
             )
+
+        unknown_cells = sum(value == -1 for value in msg.data)
+        free_cells = sum(value == 0 for value in msg.data)
+        Occupied_cells = sum(value == 100 for value in msg.data)
+        intermediate_cells = (
+            len(msg.data) - unknown_cells - free_cells - Occupied_cells
+        )
+
+        known_cells = len(msg.data) - unknown_cells
+        known_fraction = known_cells / len(msg.data)
+        cell_area = info.resolution ** 2
+
+        self.get_logger().info(
+            f'Map statistics:'
+            f'known ={known_fraction:.1%},'
+            f'free ={free_cells},'
+            f'occupied={Occupied_cells},'
+            f'unknown={unknown_cells},'
+            f'intermediate = {intermediate_cells},'
+            f'known_area ={known_cells * cell_area:.2f} m²',
+            throttle_duration_sec =2.0,
+        )
         
 def main(args =None):
     rclpy.init(args=args)

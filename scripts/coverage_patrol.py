@@ -124,6 +124,8 @@ class CoveragePatrol(Node):
                                    fraction=self.value('sensor_min_valid_fraction'))
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
         stream = self.streams[key]
+        if stream.stamp is not None and stamp == stream.stamp:
+            return
         previous_rejections = stream.rejected
         wall = time.monotonic()
         stream.update(stamp, wall, *result)
