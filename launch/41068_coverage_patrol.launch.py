@@ -95,4 +95,5 @@ def generate_launch_description():
             FindPackageShare('41068_ignition_bringup'), 'config', 'coverage_patrol.yaml']),
         description='Coverage bounds, readiness, sensor validation and controller settings.'))
     ld.add_action(OpaqueFunction(function=_launch))
+
     return ld

@@ -102,8 +102,8 @@ class Environment_Reconstruction(Node):
         point_cloud.points = o3d.utility.Vector3dVector(raw_points)
 
         # estimate and orient normals to begin creating mesh
-        point_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
-        point_cloud.orient_normals_towards_camera_location(camera_location=pose_matrix[:3,3])
+        # point_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
+        # point_cloud.orient_normals_towards_camera_location(camera_location=np.array([0.0, 0.0, 0.0])) #orients pc to lidar coordinate frame NOT global
 
         #set the pointcloud to the global coordinate frame
         point_cloud.transform(pose_matrix)
@@ -116,12 +116,22 @@ class Environment_Reconstruction(Node):
             f'Integrated frame {self.frame_count} into global map.', throttle_duration_sec=2.0
             )
 
+        # Keep global point cloud size bounded by downsampling every 10 frames
+        if self.frame_count % 10 == 0:
+            self.global_point_cloud = self.global_point_cloud.voxel_down_sample(0.04)
+
     def export_mesh_callback(self):
         if self.frame_count == 0:
             return
 
+        pcd = self.global_point_cloud.voxel_down_sample(voxel_size=0.04)
+
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
+        pcd.orient_normals_towards_camera_location(camera_location=np.array([0.0, 0.0, 0.0])) #orients pc to lidar coordinate frame NOT global
+
         # get mesh from point cloud
-        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(self.global_point_cloud, depth=9)
+        radii = o3d.utility.DoubleVector([0.06, 0.12, 0.24])
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd=pcd, radii=radii)
         mesh.compute_vertex_normals()
 
         # export mesh
