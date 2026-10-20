@@ -94,7 +94,7 @@
   </link>
 
   <joint name="${prefix}camera_joint" type="fixed">
-    <origin xyz="0.25 0.0 0.25" rpy="0 $(arg camera_pitch) 0"/>
+    <origin xyz="0.25 0.0 -0.15" rpy="0 $(arg camera_pitch) 0"/>
     <parent link="${prefix}base_link"/>
     <child link="${prefix}camera_link"/>
   </joint>
