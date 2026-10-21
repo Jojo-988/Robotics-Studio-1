@@ -1,0 +1,1 @@
+Charcoal black pine_dead model. Replaces transparent foliage with original needle alpha and black texture. Install whole pine_dead directory, ensure world references model://pine_dead, restart Gazebo. If original appears, check duplicate model paths and resource path ordering.
