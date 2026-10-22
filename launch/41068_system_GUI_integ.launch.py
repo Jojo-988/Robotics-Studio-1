@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import os
 
 from launch import LaunchDescription
@@ -14,15 +13,19 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
 
-    pkg_share = get_package_share_directory(
+    ignition_share = get_package_share_directory(
         '41068_ignition_bringup'
     )
 
-    # Launch existing Gazebo simulation
+    vision_share = get_package_share_directory(
+        'robot_vision'
+    )
+
+    # 1. Launch Gazebo simulation
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                pkg_share,
+                ignition_share,
                 'launch',
                 '41068_ignition.launch.py'
             )
@@ -37,13 +40,28 @@ def generate_launch_description():
         }.items()
     )
 
-    # Existing GUI Python script
-    gui_path = os.path.expanduser(
-        '~/41068_ws/src/Robotics-Studio-1/'
-        'GUI_Integration/GUI_Test2.py'
+    # 2. Launch both fire detectors
+    fire_detection = TimerAction(
+        period=5.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(
+                        vision_share,
+                        'launch',
+                        'fire_detection.launch.py'
+                    )
+                )
+            )
+        ]
     )
 
-    # Start GUI after Gazebo has had time to initialise
+    # 3. Launch existing GUI
+    gui_path = os.path.expanduser(
+        '~/41068_ws/src/Robotics-Studio-1/'
+        'GUI_Integration/GUI_NavGoal_Pub.py'
+    )
+
     gui = TimerAction(
         period=10.0,
         actions=[
@@ -56,5 +74,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         gazebo,
+        fire_detection,
         gui,
     ])
