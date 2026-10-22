@@ -9,6 +9,9 @@ import tf2_ros as tf2
 from scipy.spatial.transform import Rotation
 from rclpy.duration import Duration
 from rclpy.time import Time
+import threading
+from std_msgs.msg import String
+import json
 
 # python3 scripts/environment_reconstruction.py --ros-args -r /tf:=/parrot1/tf -r /tf_static:=/parrot1/tf_static
 
@@ -17,8 +20,8 @@ class Environment_Reconstruction(Node):
         super().__init__('env_reconstructor', namespace='parrot1')
 
         # tf2 buffer and listener to convert between coordinate frames
-        self.tf_buffer = tf2.Buffer()
-        self.tf_listener = tf2.TransformListener(buffer=self.tf_buffer, node=self, spin_thread=False)
+        self.tf_buffer = tf2.Buffer(cache_time=Duration(seconds=30))
+        self.tf_listener = tf2.TransformListener(buffer=self.tf_buffer, node=self, spin_thread=True)
 
         self.global_frame = 'parrot1_odom'
         self.sensor_frame = 'lidar_frame'
@@ -31,6 +34,8 @@ class Environment_Reconstruction(Node):
             )
 
         self.global_point_cloud = o3d.geometry.PointCloud()
+
+        self.is_meshing = False # flag to see whether async mesh thread is running
         
         qos_profile = QoSProfile(
                             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -46,13 +51,21 @@ class Environment_Reconstruction(Node):
             qos_profile=qos_profile
             )
 
+        self.status_sub = self.create_subscription(
+            String, 
+            'patrol/status', 
+            self.status_callback, 
+            qos_profile=qos_profile
+            )
+        self.patrol_status = None
+
         # Timer to periodically extract mesh or save 3D reconstruction model
-        self.save_timer = self.create_timer(10.0, self.export_mesh_callback)
+        self.save_timer = self.create_timer(20.0, self.export_mesh_callback)
         self.frame_count = 0
 
         self.get_logger().info('TSDF Environment Reconstruction Node Active.')
 
-    def get_transform(self, target_frame, source_frame):
+    def get_transform(self, target_frame, source_frame, stamp):
 
         # Get transforms from tf
         self.get_logger().info(
@@ -61,8 +74,8 @@ class Environment_Reconstruction(Node):
         transform = self.tf_buffer.lookup_transform(
             source_frame=source_frame, 
             target_frame=target_frame, 
-            time=Time(), 
-            timeout= Duration(seconds=1)
+            time=stamp, 
+            timeout= Duration(nanoseconds=50 * 10 **6) # 50ms timeout
             )
 
         # extract translations
@@ -90,11 +103,25 @@ class Environment_Reconstruction(Node):
 
     def callback(self, msg: PointCloud2):
 
-        # generate pose matrix between global and sensor frame
-        pose_matrix = self.get_transform(
-            self.global_frame, 
-            msg.header.frame_id, 
+        if self.patrol_status != 'PATROL':
+            self.get_logger().info(
+                'Awaiting Patrol...'
             )
+            return
+        
+        try:
+            # generate pose matrix between global and sensor frame
+            pose_matrix = self.get_transform(
+                self.global_frame, 
+                msg.header.frame_id, 
+                msg.header.stamp
+                )
+        except Exception as e:
+            # if frame isnt buffered, safely drop it
+            self.get_logger().warning(
+                'Failed to recieve transform, frame dropped.'
+            )
+            return
 
         # covnert ros2 pointcloud2 into o3d pointcloud
         raw_points = point_cloud2.read_points_numpy(msg, field_names=['x', 'y', 'z'], skip_nans=True)
@@ -121,26 +148,50 @@ class Environment_Reconstruction(Node):
             self.global_point_cloud = self.global_point_cloud.voxel_down_sample(0.04)
 
     def export_mesh_callback(self):
-        if self.frame_count == 0:
+        if (self.frame_count == 0 or self.is_meshing == True) and self.patrol_status == 'COMPLETE':
             return
 
+        self.get_logger().info(
+            'Attempting to build mesh...'
+        )
+
+        mesh_thread = threading.Thread(target=self.async_mesh)
+        mesh_thread.start()
+
+    def async_mesh(self):
+
+        self.is_meshing = True
+
         pcd = self.global_point_cloud.voxel_down_sample(voxel_size=0.04)
+        pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
         pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
-        pcd.orient_normals_towards_camera_location(camera_location=np.array([0.0, 0.0, 0.0])) #orients pc to lidar coordinate frame NOT global
+        # pcd.orient_normals_towards_camera_location(camera_location=np.array([0.0, 0.0, 0.0])) #orients pc to lidar coordinate frame NOT global
+        pcd.orient_normals_consistent_tangent_plane(k=15)
 
         # get mesh from point cloud
-        radii = o3d.utility.DoubleVector([0.06, 0.12, 0.24])
+        radii = o3d.utility.DoubleVector([0.06, 0.12, 0.24, 0.40])
         mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd=pcd, radii=radii)
         mesh.compute_vertex_normals()
 
         # export mesh
         filename = 'Environment Reconstruction.ply'
         o3d.io.write_triangle_mesh(filename=filename, mesh=mesh)
+        self.is_meshing = False
 
         self.get_logger().info(
             f'Mesh successfully exported to {filename}'
             )
+
+    def status_callback(self, msg):
+
+        data = json.loads(msg.data)
+        status = data.get('state', 'UNKNOWN')
+        self.patrol_status = status
+        # self.get_logger().info(
+        #     f'Patrol Status: {status}'
+        # )
+        return
 
 def main(args=None):
     rclpy.init(args=args)
