@@ -176,7 +176,7 @@ class Environment_Reconstruction(Node):
 
         # export mesh
         filename = 'Environment Reconstruction.ply'
-        o3d.io.write_triangle_mesh(filename=filename, mesh=mesh)
+        o3d.io.write_triangle_mesh(filename=filename, mesh=mesh, print_progress=True)
         self.is_meshing = False
 
         self.get_logger().info(
