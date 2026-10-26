@@ -7,6 +7,7 @@ import subprocess
 import time
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk, messagebox, simpledialog
 
 import cv2
@@ -62,7 +63,7 @@ ROVER_STOP_DISTANCE = 0.85
 ROVER_SCAN_TIMEOUT = 1.0
 
 
-
+# Image processing functions for fire and plant health detection
 def annotate_regions(frame, mask, name, color, minimum=800):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     count = 0
@@ -78,7 +79,7 @@ def annotate_regions(frame, mask, name, color, minimum=800):
                     cv2.FONT_HERSHEY_SIMPLEX, .48, color, 2)
     return count
 
-
+# Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
 def process_frame(frame):
     frame = cv2.resize(frame, (480, 270))
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
@@ -120,6 +121,11 @@ class BridgeNode(Node):
         self.cancel_queued = {r: False for r in CONFIG}
         self.nav_clients = {}
 
+        # Final 3D map readiness, published by environment_reconstruction.py.
+        self.map_ready = False
+        self.create_subscription(Bool, '/parrot1/reconstruction/ready',
+                                 self.on_map_ready, 10)
+
         # Fire alerts are passed from the ROS worker to the Tkinter main thread.
         self.fire_detected = False
         self.pending_fire_alert = False
@@ -160,6 +166,9 @@ class BridgeNode(Node):
             # Nav2 action clients intentionally disabled; both robots use manual control.
 
 
+    def on_map_ready(self, msg):
+        with self.lock:
+            self.map_ready = bool(msg.data)
 
     def on_fire_detected(self, msg):
         # ROS callback: never open Tkinter windows from this worker thread.
@@ -630,10 +639,50 @@ class Dashboard:
         self.patrol_stop_button.grid(row=0, column=4, padx=8)
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
         self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
+        # Independent mapping status section; no duplicate patrol controls.
+        mapping = tk.LabelFrame(body, text='PARROT SCANNING & 3D MAPPING',
+                                bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
+        mapping.pack(fill='x', padx=20, pady=8)
+        self.map_label = self.label(mapping, '3D MAP: NOT READY', bold=True)
+        self.map_label.pack(anchor='w', padx=8, pady=(10, 4))
+        self.open_map_button = tk.Button(mapping, text='OPEN 3D MAP',
+                                         bg='#2475a8', fg='white', command=self.open_3d_map)
+        self.open_map_button.pack(anchor='w', padx=8, pady=(4, 10))
         self.feedback = self.label(body, 'Both robots use direct velocity control (nav2:=false). Stop patrol before manual Parrot flight.', wrap=1080)
         self.feedback.pack(pady=9)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
+
+    def open_3d_map(self):
+    #     # # Keep the button clickable even when the map is not ready.
+    #     # with self.node.lock:
+    #     #     ready = self.node.map_ready
+    #     # if not ready:
+    #     #     self.feedback.config(text='PLY not ready yet.')
+    #     #     return
+        viewer = Path(__file__).resolve().parent / 'mesh_3D_model.py'
+
+        if not viewer.is_file():
+            self.feedback.config(
+                text=f'3D map viewer not found: {viewer}'
+            )
+            return
+
+        try:
+            subprocess.Popen(
+                ['python3', str(viewer)],
+                cwd=str(Path.home() / '41068_ws'),
+                start_new_session=True
+            )
+
+            self.feedback.config(
+                text='Opening 3D map viewer...'
+            )
+
+        except OSError as exc:
+            self.feedback.config(
+                text=f'Unable to open 3D map: {exc}'
+            )
 
     # Setup the label widget with specified text, boldness, and wrap length
     def label(self, parent, text, bold=False, wrap=0):
@@ -673,11 +722,13 @@ class Dashboard:
             return
         command = [
             'ros2', 'launch', '41068_ignition_bringup',
-            '41068_coverage_patrol.launch.py', 'mode:=attach',
+            '41068_integrated_mapping.launch.py', 'mode:=attach',
             f'altitude:={altitude}',
             f'repeat:={str(self.patrol_repeat.get()).lower()}',
         ]
         try:
+            with self.node.lock:
+                self.node.map_ready = False
             with self.patrol_lock:
                 self.patrol_process = subprocess.Popen(command, start_new_session=True)
                 self.patrol_stopping = False
@@ -861,6 +912,12 @@ class Dashboard:
                 self.patrol_status = f'LAUNCH RUNNING (PID {proc.pid}); check patrol logs for flight status'
             patrol_status = self.patrol_status
         self.patrol_label.config(text='Patrol: ' + patrol_status)
+        with self.node.lock:
+            map_ready = self.node.map_ready
+        self.map_label.config(
+            text='3D MAP: READY' if map_ready else '3D MAP: NOT READY',
+            fg='#00df88' if map_ready else '#ff5252'
+        )
         self.patrol_start_button.config(state='disabled' if self.patrol_active() or self.patrol_stopping else 'normal')
         self.patrol_stop_button.config(state='normal' if self.patrol_active() and not self.patrol_stopping else 'disabled')
         self.root.after(150, self.update)

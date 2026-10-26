@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 
+from pathlib import Path
 from launch import LaunchDescription
 from launch.actions import (
     IncludeLaunchDescription,
@@ -42,7 +43,18 @@ def generate_launch_description():
         }.items()
     )
 
-    # 2. Launch both fire detectors
+    # 2. Launch lidar handler
+    repo_root = Path.home() / '41068_ws/src/Robotics-Studio-1'
+
+    lidar = ExecuteProcess(
+        cmd=[
+            'python3',
+            str(repo_root / 'scripts/lidar_handler.py')
+        ],
+        output='screen',
+        name='lidar_handler'
+    )
+    # 3. Launch both fire detectors
     fire_detection = TimerAction(
         period=5.0,
         actions=[
@@ -58,10 +70,10 @@ def generate_launch_description():
         ]
     )
 
-    # 3. Launch existing GUI
+    # 4. Launch existing GUI
     gui_path = os.path.expanduser(
         '~/41068_ws/src/Robotics-Studio-1/'
-        'GUI_Integration/GUI_Test2.py'
+        'GUI_Integration/GUI_NavGoal_Pub.py'
     )
 
     gui = TimerAction(
@@ -78,4 +90,5 @@ def generate_launch_description():
         gazebo,
         fire_detection,
         gui,
+        lidar,
     ])
