@@ -73,7 +73,7 @@ def generate_launch_description():
     # 4. Launch existing GUI
     gui_path = os.path.expanduser(
         '~/41068_ws/src/Robotics-Studio-1/'
-        'GUI_Integration/GUI_NavGoal_Pub.py'
+        'GUI_Integration/GUI_Test2.py'
     )
 
     gui = TimerAction(
