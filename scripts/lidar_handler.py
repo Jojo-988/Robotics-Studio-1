@@ -67,16 +67,16 @@ class Lidar_Handler(Node):
 
         if raw_points_numpy.shape[0] < 2:
             self.get_logger().warning(
-                "Point Cloud is empty"
+                "Point Cloud is empty"x
             )
             return
 
-        self.get_logger().info(
-            f"Points shape: {raw_points_numpy.shape}"
-            )
-        self.get_logger().info(
-            f"Min: {np.min(raw_points_numpy, axis=0)}, Max: {np.max(raw_points_numpy, axis=0)}"
-            )
+        # self.get_logger().info(
+        #     f"Points shape: {raw_points_numpy.shape}"
+        #     )
+        # self.get_logger().info(
+        #     f"Min: {np.min(raw_points_numpy, axis=0)}, Max: {np.max(raw_points_numpy, axis=0)}"
+        #     )
 
         # === Step 2: Crop Bounds ===
         # (crop bounds if having issues with points going out of the environment)
@@ -87,10 +87,10 @@ class Lidar_Handler(Node):
 
         downsampled_pcd = point_cloud.voxel_down_sample(self.voxel_size)
         processed_points = np.asarray(downsampled_pcd.points)
-        self.get_logger().info(
-            f"Original points: {raw_points_numpy.shape[0]} -> Downsampled points: {processed_points.shape[0]}"
-            )
-        print("\n")
+        # self.get_logger().info(
+        #     f"Original points: {raw_points_numpy.shape[0]} -> Downsampled points: {processed_points.shape[0]}"
+        #     )
+        # print("\n")
 
         # === Step 4: Convert back to ROS2 Point Cloud and publish ===
         output_msg = point_cloud2.create_cloud_xyz32(header=msg.header, points=processed_points)
