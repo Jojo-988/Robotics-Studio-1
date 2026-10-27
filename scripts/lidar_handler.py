@@ -67,7 +67,7 @@ class Lidar_Handler(Node):
 
         if raw_points_numpy.shape[0] < 2:
             self.get_logger().warning(
-                "Point Cloud is empty"x
+                "Point Cloud is empty"
             )
             return
 
