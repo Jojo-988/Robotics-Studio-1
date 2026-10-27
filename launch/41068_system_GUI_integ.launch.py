@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 import os
-
 from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import (
     IncludeLaunchDescription,
     ExecuteProcess,
     TimerAction,
 )
+
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
 
+    # Dynamically locate the ROS2 package
     ignition_share = get_package_share_directory(
         '41068_ignition_bringup'
     )
@@ -21,6 +23,8 @@ def generate_launch_description():
     vision_share = get_package_share_directory(
         'robot_vision'
     )
+
+    repo_root = Path(__file__).resolve().parent.parent
 
     # 1. Launch Gazebo simulation
     gazebo = IncludeLaunchDescription(
@@ -39,21 +43,17 @@ def generate_launch_description():
             'rviz': 'false',
             'world': 'large_demo',
             # 'parrot_camera_pitch': '1.5707963267948966' # 90 degrees in radians
-            'parrot_camera_pitch': '1.2217304764',  # 70 degrees in radians
+            'parrot_camera_pitch': '1.2217304764',  # 70 degrees
         }.items()
     )
 
-    # 2. Launch lidar handler
-    repo_root = Path.home() / '41068_ws/src/Robotics-Studio-1'
-
+    # 2. Launch LiDAR handler
     lidar = ExecuteProcess(
-        cmd=[
-            'python3',
-            str(repo_root / 'scripts/lidar_handler.py')
-        ],
+        cmd=['python3', str(repo_root / 'scripts' / 'lidar_handler.py')],
         output='screen',
         name='lidar_handler'
     )
+
     # 3. Launch both fire detectors
     fire_detection = TimerAction(
         period=5.0,
@@ -70,25 +70,21 @@ def generate_launch_description():
         ]
     )
 
-    # 4. Launch existing GUI
-    gui_path = os.path.expanduser(
-        '~/41068_ws/src/Robotics-Studio-1/'
-        'GUI_Integration/GUI_Test2.py'
-    )
-
+    # 4. Launch GUI
     gui = TimerAction(
         period=10.0,
         actions=[
             ExecuteProcess(
-                cmd=['python3', gui_path],
-                output='screen'
+                cmd=['python3', str(repo_root / 'GUI_Integration' / 'GUI_Test2.py')],
+                output='screen',
+                name='forest_monitoring_gui'
             )
         ]
     )
 
     return LaunchDescription([
         gazebo,
-        fire_detection,
-        gui,
         lidar,
+        fire_detection,
+        gui
     ])

@@ -9,8 +9,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 
-REPO_ROOT = Path.home() / '41068_ws' / 'src' / 'Robotics-Studio-1'
-
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def generate_launch_description():
     pkg = FindPackageShare('41068_ignition_bringup')
@@ -43,7 +42,6 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('altitude', default_value='10.0'),
         DeclareLaunchArgument('repeat', default_value='false'),
-        lidar,
         reconstruction,
         patrol,
     ])
