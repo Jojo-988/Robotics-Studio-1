@@ -36,7 +36,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            'husky': 'true',
+            'husky': 'false',
             'parrot': 'true',
             'slam': 'false',
             'nav2': 'false',

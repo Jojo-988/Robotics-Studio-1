@@ -29,13 +29,13 @@ from std_srvs.srv import SetBool, Trigger
 
 # TOPIC LIST CONFIRGURATION, MATCH THE ROS2 TOPIC/ACTION LIST
 CONFIG = {
-    'rover': {
-        'name': 'Husky1', 'camera': '/husky1/camera/image',
-        'odom': '/husky1/odom', 'scan': '/husky1/scan',
-        'goal': '/husky1/rover/goal', 'status': '/husky1/rover/status',
-        'pause': '/husky1/rover/pause', 'cancel': '/husky1/rover/cancel',
-        'action': '/husky1/navigate_to_pose', 'frame': 'husky1_map',
-    },
+    # 'rover': {
+    #     'name': 'Husky1', 'camera': '/husky1/camera/image',
+    #     'odom': '/husky1/odom', 'scan': '/husky1/scan',
+    #     'goal': '/husky1/rover/goal', 'status': '/husky1/rover/status',
+    #     'pause': '/husky1/rover/pause', 'cancel': '/husky1/rover/cancel',
+    #     'action': '/husky1/navigate_to_pose', 'frame': 'husky1_map',
+    # },
     'aerial': {
         'name': 'Parrot1', 'camera': '/parrot1/camera/image',
         'odom': '/parrot1/odometry', 'scan': '/parrot1/scan',
@@ -53,14 +53,14 @@ MANUAL_POSITION_TOL = 0.20  # m
 MANUAL_YAW_TOL = math.radians(8)
 MANUAL_ODOM_TIMEOUT = 1.0 # wall seconds
 MANUAL_GOAL_TIMEOUT = 120.0
-ROVER_MAX_LINEAR = 0.45
-ROVER_MAX_ANGULAR = 0.65
-ROVER_POSITION_TOL = 0.18
-ROVER_YAW_TOL = math.radians(8)
-ROVER_ODOM_TIMEOUT = 1.0
-ROVER_GOAL_TIMEOUT = 180.0
-ROVER_STOP_DISTANCE = 0.85
-ROVER_SCAN_TIMEOUT = 1.0
+# ROVER_MAX_LINEAR = 0.45
+# ROVER_MAX_ANGULAR = 0.65
+# ROVER_POSITION_TOL = 0.18
+# ROVER_YAW_TOL = math.radians(8)
+# ROVER_ODOM_TIMEOUT = 1.0
+# ROVER_GOAL_TIMEOUT = 180.0
+# ROVER_STOP_DISTANCE = 0.85
+# ROVER_SCAN_TIMEOUT = 1.0
 
 
 # Image processing functions for fire and plant health detection
@@ -121,10 +121,8 @@ class BridgeNode(Node):
         self.cancel_queued = {r: False for r in CONFIG}
         self.nav_clients = {}
 
-        # Final 3D map readiness, published by environment_reconstruction.py.
+        # Final 3D map readiness
         self.map_ready = False
-        self.create_subscription(Bool, '/parrot1/reconstruction/ready',
-                                 self.on_map_ready, 10)
 
         # Fire alerts are passed from the ROS worker to the Tkinter main thread.
         self.fire_detected = False
@@ -146,16 +144,19 @@ class BridgeNode(Node):
         self.create_subscription(Odometry, '/parrot1/odometry',
                                  self.on_manual_odometry, qos_profile_sensor_data)
         self.manual_timer = self.create_timer(0.05, self.manual_control_tick)
-        self.rover_goal = None
-        self.rover_started = None
-        self.rover_pose = None
-        self.rover_odom_received = None
-        self.rover_scan_received = None
-        self.rover_front_distance = None
-        self.rover_cmd = None
-        self.rover_paused = False
-        self.create_subscription(Odometry, '/husky1/odom', self.on_rover_odometry, qos_profile_sensor_data)
-        self.rover_timer = self.create_timer(0.05, self.rover_control_tick)
+
+        # self.rover_goal = None
+        # self.rover_started = None
+        # self.rover_pose = None
+        # self.rover_odom_received = None
+        # self.rover_scan_received = None
+        # self.rover_front_distance = None
+        # self.rover_cmd = None
+        # self.rover_paused = False
+        # self.create_subscription(Odometry, '/husky1/odom', self.on_rover_odometry, qos_profile_sensor_data)
+        # self.rover_timer = self.create_timer(0.05, self.rover_control_tick)
+
+        # Create action clients for navigation goals (manual goals are being used instead of Nav2 for the aerial robot)
         for robot, cfg in CONFIG.items():
             self.create_subscription(Image, cfg['camera'],
                 lambda msg, r=robot: self.on_image(r, msg), qos_profile_sensor_data)
@@ -163,12 +164,6 @@ class BridgeNode(Node):
                 lambda msg, r=robot: self.on_odom(r, msg), qos_profile_sensor_data)
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
-            # Nav2 action clients intentionally disabled; both robots use manual control.
-
-
-    def on_map_ready(self, msg):
-        with self.lock:
-            self.map_ready = bool(msg.data)
 
     def on_fire_detected(self, msg):
         # ROS callback: never open Tkinter windows from this worker thread.
@@ -270,95 +265,95 @@ class BridgeNode(Node):
                 self.manual_cmd.publish(cmd)
         self.set_status('aerial', f'Manual: distance {math.sqrt(ex*ex+ey*ey+ez*ez):.2f} m | yaw error {math.degrees(e_yaw):.1f} deg')
 
-    def on_rover_odometry(self, msg):
-        p, q = msg.pose.pose.position, msg.pose.pose.orientation
-        yaw = math.atan2(2 * (q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
-        with self.lock:
-            self.rover_pose = (p.x, p.y, yaw)
-            self.rover_odom_received = time.monotonic()
+    # def on_rover_odometry(self, msg):
+    #     p, q = msg.pose.pose.position, msg.pose.pose.orientation
+    #     yaw = math.atan2(2 * (q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+    #     with self.lock:
+    #         self.rover_pose = (p.x, p.y, yaw)
+    #         self.rover_odom_received = time.monotonic()
 
-    def stop_rover_manual(self, reason='Rover goal canceled'):
-        with self.lock:
-            active = self.rover_goal is not None
-            self.rover_goal = None
-            self.rover_started = None
-            self.rover_paused = False
-            self.status['rover'] = reason
-            if self.rover_cmd is not None:
-                try:
-                    self.rover_cmd.publish(Twist())
-                finally:
-                    self.destroy_publisher(self.rover_cmd)
-                    self.rover_cmd = None
-        return active
+    # def stop_rover_manual(self, reason='Rover goal canceled'):
+    #     with self.lock:
+    #         active = self.rover_goal is not None
+    #         self.rover_goal = None
+    #         self.rover_started = None
+    #         self.rover_paused = False
+    #         self.status['rover'] = reason
+    #         if self.rover_cmd is not None:
+    #             try:
+    #                 self.rover_cmd.publish(Twist())
+    #             finally:
+    #                 self.destroy_publisher(self.rover_cmd)
+    #                 self.rover_cmd = None
+    #     return active
 
-    def start_rover_manual(self, x, y, yaw_degrees):
-        with self.lock:
-            if self.rover_odom_received is None or time.monotonic()-self.rover_odom_received > ROVER_ODOM_TIMEOUT:
-                self.status['rover'] = 'ERROR: /husky1/odom missing or stale'
-                return False
-            if self.rover_goal is not None:
-                self.status['rover'] = 'Cancel the current rover goal first'
-                return False
-            owners = self.get_publishers_info_by_topic('/husky1/cmd_vel')
-            if owners:
-                self.status['rover'] = 'ERROR: /husky1/cmd_vel already owned by ' + ', '.join(
-                    f'{p.node_namespace}/{p.node_name}' for p in owners)
-                return False
-            self.rover_cmd = self.create_publisher(Twist, '/husky1/cmd_vel', 10)
-            self.rover_goal = (x, y, math.radians(yaw_degrees))
-            self.rover_started = time.monotonic()
-            self.rover_paused = False
-            self.status['rover'] = 'Manual rover goal active'
-        return True
+    # def start_rover_manual(self, x, y, yaw_degrees):
+    #     with self.lock:
+    #         if self.rover_odom_received is None or time.monotonic()-self.rover_odom_received > ROVER_ODOM_TIMEOUT:
+    #             self.status['rover'] = 'ERROR: /husky1/odom missing or stale'
+    #             return False
+    #         if self.rover_goal is not None:
+    #             self.status['rover'] = 'Cancel the current rover goal first'
+    #             return False
+    #         owners = self.get_publishers_info_by_topic('/husky1/cmd_vel')
+    #         if owners:
+    #             self.status['rover'] = 'ERROR: /husky1/cmd_vel already owned by ' + ', '.join(
+    #                 f'{p.node_namespace}/{p.node_name}' for p in owners)
+    #             return False
+    #         self.rover_cmd = self.create_publisher(Twist, '/husky1/cmd_vel', 10)
+    #         self.rover_goal = (x, y, math.radians(yaw_degrees))
+    #         self.rover_started = time.monotonic()
+    #         self.rover_paused = False
+    #         self.status['rover'] = 'Manual rover goal active'
+    #     return True
 
-    def rover_control_tick(self):
-        with self.lock:
-            goal, pose = self.rover_goal, self.rover_pose
-            received, started = self.rover_odom_received, self.rover_started
-            paused = self.rover_paused
-            scan_time, front_distance = self.rover_scan_received, self.rover_front_distance
-        if goal is None:
-            return
-        now = time.monotonic()
-        if received is None or now-received > ROVER_ODOM_TIMEOUT:
-            self.stop_rover_manual('ERROR: stale rover odometry')
-            return
-        if started is not None and now-started > ROVER_GOAL_TIMEOUT:
-            self.stop_rover_manual('ERROR: rover goal timed out')
-            return
-        if scan_time is None or now-scan_time > ROVER_SCAN_TIMEOUT:
-            self.stop_rover_manual('ERROR: rover LiDAR missing/stale; stopped')
-            return
-        x, y, yaw = pose
-        gx, gy, gyaw = goal
-        dx, dy = gx-x, gy-y
-        distance = math.hypot(dx, dy)
-        yaw_error = self.wrap_angle(gyaw-yaw)
-        if distance < ROVER_POSITION_TOL and abs(yaw_error) < ROVER_YAW_TOL:
-            self.stop_rover_manual('Rover goal reached')
-            return
-        cmd = Twist()
-        if paused:
-            status = 'Rover paused'
-        elif distance >= ROVER_POSITION_TOL:
-            heading_error = self.wrap_angle(math.atan2(dy, dx)-yaw)
-            cmd.angular.z = self.limit(1.4*heading_error, ROVER_MAX_ANGULAR)
-            if abs(heading_error) < math.radians(35):
-                if front_distance is None or front_distance < ROVER_STOP_DISTANCE:
-                    status = 'BLOCKED: obstacle ahead; rover stopped'
-                else:
-                    cmd.linear.x = min(ROVER_MAX_LINEAR, 0.65*distance) * max(0.0, math.cos(heading_error))
-                    status = f'Rover manual: {distance:.2f} m remaining'
-            else:
-                status = f'Rover turning: {math.degrees(heading_error):.1f} deg'
-        else:
-            cmd.angular.z = self.limit(1.4*yaw_error, ROVER_MAX_ANGULAR)
-            status = f'Rover aligning yaw: {math.degrees(yaw_error):.1f} deg'
-        with self.lock:
-            if self.rover_goal == goal and self.rover_cmd is not None:
-                self.rover_cmd.publish(cmd)
-                self.status['rover'] = status
+    # def rover_control_tick(self):
+    #     with self.lock:
+    #         goal, pose = self.rover_goal, self.rover_pose
+    #         received, started = self.rover_odom_received, self.rover_started
+    #         paused = self.rover_paused
+    #         scan_time, front_distance = self.rover_scan_received, self.rover_front_distance
+    #     if goal is None:
+    #         return
+    #     now = time.monotonic()
+    #     if received is None or now-received > ROVER_ODOM_TIMEOUT:
+    #         self.stop_rover_manual('ERROR: stale rover odometry')
+    #         return
+    #     if started is not None and now-started > ROVER_GOAL_TIMEOUT:
+    #         self.stop_rover_manual('ERROR: rover goal timed out')
+    #         return
+    #     if scan_time is None or now-scan_time > ROVER_SCAN_TIMEOUT:
+    #         self.stop_rover_manual('ERROR: rover LiDAR missing/stale; stopped')
+    #         return
+    #     x, y, yaw = pose
+    #     gx, gy, gyaw = goal
+    #     dx, dy = gx-x, gy-y
+    #     distance = math.hypot(dx, dy)
+    #     yaw_error = self.wrap_angle(gyaw-yaw)
+    #     if distance < ROVER_POSITION_TOL and abs(yaw_error) < ROVER_YAW_TOL:
+    #         self.stop_rover_manual('Rover goal reached')
+    #         return
+    #     cmd = Twist()
+    #     if paused:
+    #         status = 'Rover paused'
+    #     elif distance >= ROVER_POSITION_TOL:
+    #         heading_error = self.wrap_angle(math.atan2(dy, dx)-yaw)
+    #         cmd.angular.z = self.limit(1.4*heading_error, ROVER_MAX_ANGULAR)
+    #         if abs(heading_error) < math.radians(35):
+    #             if front_distance is None or front_distance < ROVER_STOP_DISTANCE:
+    #                 status = 'BLOCKED: obstacle ahead; rover stopped'
+    #             else:
+    #                 cmd.linear.x = min(ROVER_MAX_LINEAR, 0.65*distance) * max(0.0, math.cos(heading_error))
+    #                 status = f'Rover manual: {distance:.2f} m remaining'
+    #         else:
+    #             status = f'Rover turning: {math.degrees(heading_error):.1f} deg'
+    #     else:
+    #         cmd.angular.z = self.limit(1.4*yaw_error, ROVER_MAX_ANGULAR)
+    #         status = f'Rover aligning yaw: {math.degrees(yaw_error):.1f} deg'
+    #     with self.lock:
+    #         if self.rover_goal == goal and self.rover_cmd is not None:
+    #             self.rover_cmd.publish(cmd)
+    #             self.status['rover'] = status
 
     # Thread-safe status update
     def set_status(self, robot, message):
@@ -400,28 +395,28 @@ class BridgeNode(Node):
         with self.lock:
             self.obstacles[robot] = result
             self.last_sensor_time[robot] = self.get_clock().now().nanoseconds / 1e9
-            if robot == 'rover':
-                self.rover_scan_received = time.monotonic()
-                self.rover_front_distance = result[1]
+            # if robot == 'rover':
+            #     self.rover_scan_received = time.monotonic()
+            #     self.rover_front_distance = result[1]
     
-    # Callback for rover status messages; parses the JSON data and updates the status
-    def on_rover_status(self, msg):
-        try:
-            data = json.loads(msg.data)
-            message = f"{data.get('state', 'UNKNOWN')}: {data.get('reason', '')}" if isinstance(data, dict) else msg.data
-        except (ValueError, TypeError):
-            message = msg.data
-        self.set_status('rover', message)
+    # # Callback for rover status messages; parses the JSON data and updates the status
+    # def on_rover_status(self, msg):
+    #     try:
+    #         data = json.loads(msg.data)
+    #         message = f"{data.get('state', 'UNKNOWN')}: {data.get('reason', '')}" if isinstance(data, dict) else msg.data
+    #     except (ValueError, TypeError):
+    #         message = msg.data
+    #     self.set_status('rover', message)
     
     # Returns a string indicating the readiness of the navigation interfaces for the specified robot
     def readiness(self, robot):
-        if robot == 'rover':
-            return 'Manual rover: ' + ('odometry ready' if self.rover_odom_received is not None and time.monotonic()-self.rover_odom_received < ROVER_ODOM_TIMEOUT else 'waiting for /husky1/odom')
+        # if robot == 'rover':
+        #     return 'Manual rover: ' + ('odometry ready' if self.rover_odom_received is not None and time.monotonic()-self.rover_odom_received < ROVER_ODOM_TIMEOUT else 'waiting for /husky1/odom')
         return 'Manual 3D control: ' + ('odometry ready' if self.manual_odom_received is not None and time.monotonic() - self.manual_odom_received < MANUAL_ODOM_TIMEOUT else 'waiting for /parrot1/odometry')
     
-    # Sends a navigation goal to the rover; checks for subscribers and publishes the goal if available
-    def send_rover_goal(self, x, y, yaw):
-        return self.start_rover_manual(x, y, yaw)
+    # # Sends a navigation goal to the rover; checks for subscribers and publishes the goal if available
+    # def send_rover_goal(self, x, y, yaw):
+    #     return self.start_rover_manual(x, y, yaw)
 
     # Creates a PoseStamped message for the specified robot with the given position and orientation
     def make_pose(self, robot, x, y, z, yaw):
@@ -517,20 +512,20 @@ class BridgeNode(Node):
         except Exception as exc:
             self.set_status('aerial', f'Cancel error: {exc}')
     
-    # Pauses or resumes the rover's navigation based on the 'paused' parameter
-    def pause_rover(self, paused):
-        with self.lock:
-            if self.rover_goal is None:
-                self.status['rover'] = 'No active rover goal'
-                return False
-            self.rover_paused = paused
-            if paused and self.rover_cmd is not None:
-                self.rover_cmd.publish(Twist())
-            self.status['rover'] = 'Rover paused' if paused else 'Rover resumed'
-        return True
+    # # Pauses or resumes the rover's navigation based on the 'paused' parameter
+    # def pause_rover(self, paused):
+    #     with self.lock:
+    #         if self.rover_goal is None:
+    #             self.status['rover'] = 'No active rover goal'
+    #             return False
+    #         self.rover_paused = paused
+    #         if paused and self.rover_cmd is not None:
+    #             self.rover_cmd.publish(Twist())
+    #         self.status['rover'] = 'Rover paused' if paused else 'Rover resumed'
+    #     return True
 
-    def cancel_rover(self):
-        return self.stop_rover_manual()
+    # def cancel_rover(self):
+    #     return self.stop_rover_manual()
 
     # Handles the response from a service call; updates the status based on the result
     def service_response(self, robot, future, name):
@@ -566,6 +561,23 @@ class Dashboard:
         self.patrol_stopping = False
         self.patrol_shutdown_thread = None
         self.closing = False
+
+        # Dynamically locate workspace and reconstructed mesh
+        self.repo_root = Path(__file__).resolve().parent.parent
+        self.workspace_root = self.repo_root.parent.parent
+
+        self.mesh_path = self.workspace_root / 'Environment Reconstruction.ply'
+
+        # Mesh readiness monitoring
+        self.mesh_initial_mtime = (
+            self.mesh_path.stat().st_mtime_ns
+            if self.mesh_path.is_file() else None
+        )
+
+        self.mesh_last_signature = None
+        self.mesh_stable_since = None
+        self.mesh_verified_signature = None
+
         outer = tk.Frame(root, bg=self.BG)
         outer.pack(fill='both', expand=True)
         canvas = tk.Canvas(outer, bg=self.BG, highlightthickness=0)
@@ -582,6 +594,8 @@ class Dashboard:
                  fg=self.FG, font=('Arial', 18, 'bold')).pack(pady=12)
         cameras = tk.Frame(body, bg=self.BG)
         cameras.pack(fill='x', padx=12)
+
+        # Create camera and status panes for each robot
         for robot, cfg in CONFIG.items():
             pane = tk.Frame(cameras, bg=self.BG)
             pane.pack(side='left', fill='both', expand=True, padx=6)
@@ -596,30 +610,38 @@ class Dashboard:
             self.position_labels[robot].pack(pady=3)
             self.obstacle_labels[robot] = self.label(pane, 'Obstacle: waiting for LiDAR...', bold=True)
             self.obstacle_labels[robot].pack(pady=4)
+
+        # Create navigation control sections for each robot
         for robot, cfg in CONFIG.items():
             frame = tk.LabelFrame(body, text=cfg['name'] + ' Navigation (' + cfg['frame'] + ')',
                                   bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
             frame.pack(fill='x', padx=20, pady=8)
             names = ('X (m)', 'Y (m)', 'Yaw (deg)') if robot == 'rover' else ('X (m)', 'Y (m)', 'Z (m)', 'Yaw (deg)')
             entries = []
+
             for i, name in enumerate(names):
                 self.label(frame, name).grid(row=0, column=i, padx=5)
                 entry = ttk.Entry(frame, width=12)
                 entry.insert(0, '2.0' if name == 'Z (m)' else '0')
                 entry.grid(row=1, column=i, padx=5, pady=5)
                 entries.append(entry)
+            
             self.inputs[robot] = entries
             tk.Button(frame, text='SEND GOAL', bg='#238c55', fg='white',
                       command=lambda r=robot: self.send_goal(r)).grid(row=1, column=len(names), padx=7)
             tk.Button(frame, text='CANCEL', bg='#b72d32', fg='white',
                       command=lambda r=robot: self.cancel(r)).grid(row=1, column=len(names)+1, padx=7)
-            if robot == 'rover':
-                tk.Button(frame, text='PAUSE', command=lambda: self.node.pause_rover(True)).grid(row=2, column=0, pady=5)
-                tk.Button(frame, text='RESUME', command=lambda: self.node.pause_rover(False)).grid(row=2, column=1, pady=5)
+        
+            # if robot == 'rover':
+            #     tk.Button(frame, text='PAUSE', command=lambda: self.node.pause_rover(True)).grid(row=2, column=0, pady=5)
+            #     tk.Button(frame, text='RESUME', command=lambda: self.node.pause_rover(False)).grid(row=2, column=1, pady=5)
+
             self.ready_labels[robot] = self.label(frame, 'Checking interface...', wrap=1050)
             self.ready_labels[robot].grid(row=3, column=0, columnspan=len(names)+2, sticky='w', padx=6, pady=4)
             self.status_labels[robot] = self.label(frame, 'Waiting for navigation...', wrap=1050)
             self.status_labels[robot].grid(row=4, column=0, columnspan=len(names)+2, sticky='w', padx=6, pady=4)
+        
+        # Create the Parrot autonomous coverage patrol section
         patrol = tk.LabelFrame(body, text='PARROT AUTONOMOUS COVERAGE PATROL',
                                bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
         patrol.pack(fill='x', padx=20, pady=8)
@@ -639,6 +661,7 @@ class Dashboard:
         self.patrol_stop_button.grid(row=0, column=4, padx=8)
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
         self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
+
         # Independent mapping status section; no duplicate patrol controls.
         mapping = tk.LabelFrame(body, text='PARROT SCANNING & 3D MAPPING',
                                 bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
@@ -653,13 +676,62 @@ class Dashboard:
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
 
+    def check_mesh_ready(self):
+        try:
+            if not self.mesh_path.is_file():
+                return False
+
+            stat = self.mesh_path.stat()
+            signature = (stat.st_size, stat.st_mtime_ns)
+
+            if stat.st_size == 0:
+                return False
+
+            # Ignore mesh files from previous sessions
+            if (self.mesh_initial_mtime is not None and
+                    stat.st_mtime_ns <= self.mesh_initial_mtime):
+                return False
+
+            # Wait until the file has stopped changing for 3 seconds
+            if signature != self.mesh_last_signature:
+                self.mesh_last_signature = signature
+                self.mesh_stable_since = time.monotonic()
+                return False
+
+            if time.monotonic() - self.mesh_stable_since < 3.0:
+                return False
+
+            # Already verified this version of the mesh
+            if signature == self.mesh_verified_signature:
+                return True
+
+            # Verify the PLY contains a valid triangle mesh
+            import open3d as o3d
+
+            mesh = o3d.io.read_triangle_mesh(str(self.mesh_path))
+
+            if mesh.is_empty() or not mesh.has_triangles():
+                return False
+
+            # Ensure the file did not change during validation
+            after = self.mesh_path.stat()
+            if (after.st_size, after.st_mtime_ns) != signature:
+                return False
+
+            self.mesh_verified_signature = signature
+            return True
+
+        except (OSError, RuntimeError, ValueError):
+            return False
+
     def open_3d_map(self):
-    #     # # Keep the button clickable even when the map is not ready.
-    #     # with self.node.lock:
-    #     #     ready = self.node.map_ready
-    #     # if not ready:
-    #     #     self.feedback.config(text='PLY not ready yet.')
-    #     #     return
+        # Keep the button clickable even when the map is not ready.
+        with self.node.lock:
+            ready = self.node.map_ready
+        if not ready:
+            self.feedback.config(text='PLY not ready yet.')
+            return
+            
         viewer = Path(__file__).resolve().parent / 'mesh_3D_model.py'
 
         if not viewer.is_file():
@@ -671,18 +743,14 @@ class Dashboard:
         try:
             subprocess.Popen(
                 ['python3', str(viewer)],
-                cwd=str(Path.home() / '41068_ws'),
+                cwd=str(self.workspace_root),
                 start_new_session=True
             )
 
-            self.feedback.config(
-                text='Opening 3D map viewer...'
-            )
+            self.feedback.config(text='Opening 3D map viewer...')
 
         except OSError as exc:
-            self.feedback.config(
-                text=f'Unable to open 3D map: {exc}'
-            )
+            self.feedback.config(text=f'Unable to open 3D map: {exc}')
 
     # Setup the label widget with specified text, boldness, and wrap length
     def label(self, parent, text, bold=False, wrap=0):
@@ -727,13 +795,35 @@ class Dashboard:
             f'repeat:={str(self.patrol_repeat.get()).lower()}',
         ]
         try:
+            # Reset map readiness
+            # with self.node.lock:
+            #     self.node.map_ready = False
+            map_ready = self.check_mesh_ready()
+
             with self.node.lock:
-                self.node.map_ready = False
+                self.node.map_ready = map_ready
+            # Reset mesh monitoring for the new patrol
+            self.mesh_initial_mtime = (
+                self.mesh_path.stat().st_mtime_ns
+                if self.mesh_path.is_file() else None
+            )
+            self.mesh_last_signature = None
+            self.mesh_stable_since = None
+            self.mesh_verified_signature = None
+
+            # Start patrol process
             with self.patrol_lock:
-                self.patrol_process = subprocess.Popen(command, start_new_session=True)
+                self.patrol_process = subprocess.Popen(
+                    command,
+                    start_new_session=True
+                )
                 self.patrol_stopping = False
                 self.patrol_status = f'STARTING (PID {self.patrol_process.pid})'
-            self.feedback.config(text='Coverage patrol launch started. Check terminal logs and mission readiness.')
+
+            self.feedback.config(
+                text='Coverage patrol launch started. Check terminal logs and mission readiness.'
+            )
+
         except (OSError, ValueError) as exc:
             with self.patrol_lock:
                 self.patrol_status = f'LAUNCH ERROR: {exc}'
@@ -833,44 +923,47 @@ class Dashboard:
         if not pending:
             return
 
-        approved = messagebox.askyesno(
-            'Fire Detected!',
-            'Parrot detected a possible fire.\n\n'
-            'Send Husky for confirmation?\n\n'
-            'Note: fire coordinates are not yet available. '
-            'If you select Yes, enter a verified target X/Y.'
-        )
-        if not approved:
-            self.feedback.config(text='Fire alert dismissed. Monitoring continues.')
-            return
+        # approved = messagebox.askyesno(
+        #     'Fire Detected!',
+        #     'Parrot detected a possible fire.\n\n'
+        #     'Send Husky for confirmation?\n\n'
+        #     'Note: fire coordinates are not yet available. '
+        #     'If you select Yes, enter a verified target X/Y.'
+        # )
+        # if not approved:
+        #     self.feedback.config(text='Fire alert dismissed. Monitoring continues.')
+        #     return
 
-        # The detector only publishes Bool. Do not substitute Parrot position
-        # for the actual fire location. Request a verified target instead.
-        x = simpledialog.askfloat('Husky target', 'Verified fire X (Husky odometry frame, m):', parent=self.root)
-        if x is None:
-            self.feedback.config(text='Husky dispatch canceled: no fire X coordinate.')
-            return
-        y = simpledialog.askfloat('Husky target', 'Verified fire Y (Husky odometry frame, m):', parent=self.root)
-        if y is None:
-            self.feedback.config(text='Husky dispatch canceled: no fire Y coordinate.')
-            return
-        if not (math.isfinite(x) and math.isfinite(y)):
-            self.feedback.config(text='Husky dispatch canceled: invalid coordinates.')
-            return
+        # # The detector only publishes Bool. Do not substitute Parrot position
+        # # for the actual fire location. Request a verified target instead.
+        # x = simpledialog.askfloat('Husky target', 'Verified fire X (Husky odometry frame, m):', parent=self.root)
+        # if x is None:
+        #     self.feedback.config(text='Husky dispatch canceled: no fire X coordinate.')
+        #     return
+        # y = simpledialog.askfloat('Husky target', 'Verified fire Y (Husky odometry frame, m):', parent=self.root)
+        # if y is None:
+        #     self.feedback.config(text='Husky dispatch canceled: no fire Y coordinate.')
+        #     return
+        # if not (math.isfinite(x) and math.isfinite(y)):
+        #     self.feedback.config(text='Husky dispatch canceled: invalid coordinates.')
+        #     return
 
-        with self.node.lock:
-            pose = self.node.rover_pose
-            fresh = (self.node.rover_odom_received is not None and
-                     time.monotonic() - self.node.rover_odom_received <= ROVER_ODOM_TIMEOUT)
-        if pose is None or not fresh:
-            self.feedback.config(text='Husky not dispatched: rover odometry missing or stale.')
-            return
-        yaw_degrees = math.degrees(pose[2])
-        ok = self.node.send_rover_goal(x, y, yaw_degrees)
-        self.feedback.config(text=(
-            f'Husky dispatched toward verified target X={x:.2f}, Y={y:.2f} m.'
-            if ok else 'Husky not dispatched. Check rover navigation status.'
-        ))
+        # with self.node.lock:
+        #     pose = self.node.rover_pose
+        #     fresh = (self.node.rover_odom_received is not None and
+        #              time.monotonic() - self.node.rover_odom_received <= ROVER_ODOM_TIMEOUT)
+        # if pose is None or not fresh:
+        #     self.feedback.config(text='Husky not dispatched: rover odometry missing or stale.')
+        #     return
+        # yaw_degrees = math.degrees(pose[2])
+        # ok = self.node.send_rover_goal(x, y, yaw_degrees)
+        # self.feedback.config(text=(
+        #     f'Husky dispatched toward verified target X={x:.2f}, Y={y:.2f} m.'
+        #     if ok else 'Husky not dispatched. Check rover navigation status.'
+        # ))
+        
+        messagebox.showwarning('Fire Detected!', 'Parrot detected a possible fire. Monitoring continues.')
+        self.feedback.config(text='Possible fire detected by Parrot. No rover dispatch is enabled.')
 
     def update(self):
         if self.closing:
@@ -930,7 +1023,7 @@ class Dashboard:
         self.patrol_start_button.config(state='disabled')
         self.patrol_stop_button.config(state='disabled')
         self.node.stop_manual('GUI closing')
-        self.node.stop_rover_manual('GUI closing')
+        # self.node.stop_rover_manual('GUI closing')
         self.stop_patrol(wait=True)
         self.root.destroy()
 
