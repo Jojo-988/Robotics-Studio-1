@@ -236,15 +236,15 @@ class FireDetector(Node):
         # DISPLAY CAMERA
         # =========================================================
 
-        cv2.imshow(
-            self.window_name,
-            frame
-        )
+        # cv2.imshow(
+        #     self.window_name,
+        #     frame
+        # )
 
-        cv2.imshow(
-            self.mask_window_name,
-            fire_mask
-        )
+        # cv2.imshow(
+        #     self.mask_window_name,
+        #     fire_mask
+        # )
 
         cv2.waitKey(1)
 

@@ -85,6 +85,13 @@ class VegetationDetector(Node):
             'Waiting for synchronized RGB, depth and odometry...'
         )
 
+        # Publish the vegetation labels as an image topic for GUI display
+        self.labels_pub = self.create_publisher(
+            Image,
+            '/parrot1/vegetation/labels',
+            10
+        )
+
     @staticmethod
     def rotation_matrix(q):
         values = np.array([q.x, q.y, q.z, q.w], dtype=float)
@@ -227,12 +234,13 @@ class VegetationDetector(Node):
                     0.44, (255, 255, 255), 1,
                 )
 
-            cv2.imshow(
-                'Vegetation - Overlay',
-                np.vstack((overlay, panel)),
-            )
-            cv2.imshow('Vegetation - Labels', labels)
-            cv2.imshow('Vegetation - Retained Surfaces', retained)
+            # display CV2 windows are disabled for now, instead it will displayed the labels on the GUI
+            # cv2.imshow(
+            #     'Vegetation - Overlay',
+            #     np.vstack((overlay, panel)),
+            # )
+            # cv2.imshow('Vegetation - Labels', labels)
+            # cv2.imshow('Vegetation - Retained Surfaces', retained)
             cv2.waitKey(1)
 
             if self.first_frame:
@@ -240,6 +248,13 @@ class VegetationDetector(Node):
                     'First synchronized RGB-D and pose processed'
                 )
                 self.first_frame = False
+
+            labels_msg = self.bridge.cv2_to_imgmsg(
+                labels,
+                encoding='bgr8'
+            )
+            labels_msg.header = rgb_msg.header
+            self.labels_pub.publish(labels_msg)
 
         except Exception as error:
             self.get_logger().error(
