@@ -11,6 +11,7 @@ from rclpy.duration import Duration
 from rclpy.time import Time
 import threading
 from std_msgs.msg import String
+from std_msgs.msg import Bool
 import json
 
 # python3 scripts/environment_reconstruction.py --ros-args -r /tf:=/parrot1/tf -r /tf_static:=/parrot1/tf_static
@@ -64,6 +65,8 @@ class Environment_Reconstruction(Node):
         self.frame_count = 0
 
         self.get_logger().info('TSDF Environment Reconstruction Node Active.')
+
+        self.mesh_export_pub = self.create_publisher(Bool, '/parrot1/mesh/exported', 10)
 
     def get_transform(self, target_frame, source_frame, stamp):
 
@@ -182,6 +185,10 @@ class Environment_Reconstruction(Node):
         self.get_logger().info(
             f'Mesh successfully exported to {filename}'
             )
+
+        msg = Bool()
+        msg.data = True
+        self.mesh_export_pub.publish(msg)
 
     def status_callback(self, msg):
 

@@ -127,6 +127,12 @@ class BridgeNode(Node):
         
         # Final 3D map readiness
         self.map_ready = False
+        # Optional explicit export event (absolute PLY path preferred).
+        self.mesh_export_path = None
+        self.mesh_export_count = 0
+        self.mesh_export_sub = self.create_subscription(
+            String, '/parrot1/mesh/exported', self.on_mesh_exported, 10
+        )
 
         # Fire alerts are passed from the ROS worker to the Tkinter main thread.
         self.fire_detected = False
@@ -189,6 +195,13 @@ class BridgeNode(Node):
                 lambda msg, r=robot: self.on_odom(r, msg), qos_profile_sensor_data)
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
+
+    def on_mesh_exported(self, msg):
+        # Called from the ROS worker thread; Tkinter handles validation/display.
+        with self.lock:
+            self.mesh_export_path = msg.data.strip()
+            self.mesh_export_count += 1
+        self.get_logger().info(f'Mesh export notification received: {msg.data}')
 
     def on_fire_detected(self, msg):
         # ROS callback: never open Tkinter windows from this worker thread.
@@ -674,6 +687,9 @@ class Dashboard:
         self.mesh_last_signature = None
         self.mesh_stable_since = None
         self.mesh_verified_signature = None
+        self.mesh_export_seen = 0
+        self.mesh_check_after = 0.0
+        self.mesh_status_reason = 'Waiting for new mesh export'
 
         outer = tk.Frame(root, bg=self.BG)
         outer.pack(fill='both', expand=True)
@@ -782,6 +798,8 @@ class Dashboard:
         mapping.pack(fill='x', padx=20, pady=8)
         self.map_label = self.label(mapping, '3D MAP: NOT READY', bold=True)
         self.map_label.pack(anchor='w', padx=8, pady=(10, 4))
+        self.map_detail_label = self.label(mapping, 'Waiting for new mesh export', wrap=1050)
+        self.map_detail_label.pack(anchor='w', padx=8, pady=(0, 4))
         self.open_map_button = tk.Button(mapping, text='OPEN 3D MAP',
                                          bg='#2475a8', fg='white', command=self.open_3d_map)
         self.open_map_button.pack(anchor='w', padx=8, pady=(4, 10))
@@ -791,78 +809,111 @@ class Dashboard:
         self.update()
 
     def check_mesh_ready(self):
+        """Validate a fresh, stable triangle mesh; safe to call repeatedly."""
         try:
             if not self.mesh_path.is_file():
+                self.mesh_last_signature = None
+                self.mesh_verified_signature = None
+                self.mesh_status_reason = 'PLY file not found'
                 return False
 
             stat = self.mesh_path.stat()
             signature = (stat.st_size, stat.st_mtime_ns)
-
             if stat.st_size == 0:
+                self.mesh_status_reason = 'PLY file is empty'
                 return False
 
-            # Ignore mesh files from previous sessions
+            # A file present when the GUI/patrol started is not a new export.
             if (self.mesh_initial_mtime is not None and
                     stat.st_mtime_ns <= self.mesh_initial_mtime):
+                self.mesh_status_reason = 'Waiting for new mesh export'
                 return False
 
-            # Wait until the file has stopped changing for 3 seconds
             if signature != self.mesh_last_signature:
                 self.mesh_last_signature = signature
                 self.mesh_stable_since = time.monotonic()
+                self.mesh_verified_signature = None
+                self.mesh_status_reason = 'Mesh file detected; waiting for write to finish'
                 return False
 
-            if time.monotonic() - self.mesh_stable_since < 3.0:
+            if self.mesh_stable_since is None or time.monotonic() - self.mesh_stable_since < 3.0:
+                self.mesh_status_reason = 'Waiting for mesh file to stabilise'
                 return False
 
-            # Already verified this version of the mesh
             if signature == self.mesh_verified_signature:
+                self.mesh_status_reason = 'Validated PLY mesh'
                 return True
 
-            # Verify the PLY contains a valid triangle mesh
             import open3d as o3d
-
             mesh = o3d.io.read_triangle_mesh(str(self.mesh_path))
-
             if mesh.is_empty() or not mesh.has_triangles():
+                self.mesh_status_reason = 'PLY has no triangle geometry'
                 return False
 
-            # Ensure the file did not change during validation
             after = self.mesh_path.stat()
             if (after.st_size, after.st_mtime_ns) != signature:
+                self.mesh_status_reason = 'Mesh changed during validation'
                 return False
 
             self.mesh_verified_signature = signature
+            self.mesh_status_reason = 'Validated PLY mesh'
             return True
-
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.mesh_status_reason = f'Mesh validation error: {exc}'
             return False
 
-    def open_3d_map(self):
-        # # Keep the button clickable even when the map is not ready.
-        # with self.node.lock:
-        #     ready = self.node.map_ready
-        # if not ready:
-        #     self.feedback.config(text='PLY not ready yet.')
-        #     return
-            
-        viewer = Path(__file__).resolve().parent / 'mesh_3D_model.py'
+    def update_mesh_status(self):
+        """Run on Tkinter thread; topic notification plus file polling fallback."""
+        with self.node.lock:
+            count = self.node.mesh_export_count
+            export_path = self.node.mesh_export_path
+        if count != self.mesh_export_seen:
+            self.mesh_export_seen = count
+            if export_path:
+                candidate = Path(export_path).expanduser()
+                # Relative paths resolve from the reconstruction's working directory.
+                if candidate.is_absolute():
+                    self.mesh_path = candidate
+                else:
+                    self.mesh_path = self.workspace_root / candidate
+            self.mesh_last_signature = None
+            self.mesh_stable_since = None
+            self.mesh_verified_signature = None
+            self.mesh_check_after = 0.0
+            print(f'[MESH] Export event; checking {self.mesh_path}', flush=True)
 
-        if not viewer.is_file():
-            self.feedback.config(
-                text=f'3D map viewer not found: {viewer}'
-            )
+        if time.monotonic() < self.mesh_check_after:
+            return
+        self.mesh_check_after = time.monotonic() + 1.0
+        ready = self.check_mesh_ready()
+        with self.node.lock:
+            self.node.map_ready = ready
+        self.map_label.config(
+            text='3D MAP: READY' if ready else '3D MAP: NOT READY',
+            fg='#00df88' if ready else '#ff5252'
+        )
+        self.map_detail_label.config(text=self.mesh_status_reason)
+        self.open_map_button.config(state='normal' if ready else 'disabled')
+
+    def open_3d_map(self):
+        with self.node.lock:
+            ready = self.node.map_ready
+        if not ready or not self.check_mesh_ready():
+            self.feedback.config(text=f'3D map unavailable: {self.mesh_status_reason}')
             return
 
+        viewer = Path(__file__).resolve().parent / 'mesh_3D_model.py'
+        if not viewer.is_file():
+            self.feedback.config(text=f'3D map viewer not found: {viewer}')
+            return
         try:
+            # The existing viewer reads the mesh relative to its working directory.
             subprocess.Popen(
                 ['python3', str(viewer)],
-                cwd=str(self.workspace_root),
+                cwd=str(self.mesh_path.parent),
                 start_new_session=True
             )
-
-            self.feedback.config(text='Opening 3D map viewer...')
-
+            self.feedback.config(text=f'Opening 3D map viewer: {self.mesh_path}')
         except OSError as exc:
             self.feedback.config(text=f'Unable to open 3D map: {exc}')
 
@@ -909,13 +960,12 @@ class Dashboard:
             f'repeat:={str(self.patrol_repeat.get()).lower()}',
         ]
         try:
-            # Reset map readiness
-            # with self.node.lock:
-            #     self.node.map_ready = False
-            map_ready = self.check_mesh_ready()
-
+            # Reset readiness for this patrol; do not reuse a previous mesh.
             with self.node.lock:
-                self.node.map_ready = map_ready
+                self.node.map_ready = False
+                self.mesh_export_seen = self.node.mesh_export_count
+            self.mesh_check_after = 0.0
+            self.mesh_status_reason = 'Waiting for new mesh export'
             # Reset mesh monitoring for the new patrol
             self.mesh_initial_mtime = (
                 self.mesh_path.stat().st_mtime_ns
@@ -1159,12 +1209,7 @@ class Dashboard:
                 self.patrol_status = f'LAUNCH RUNNING (PID {proc.pid}); check patrol logs for flight status'
             patrol_status = self.patrol_status
         self.patrol_label.config(text='Patrol: ' + patrol_status)
-        with self.node.lock:
-            map_ready = self.node.map_ready
-        self.map_label.config(
-            text='3D MAP: READY' if map_ready else '3D MAP: NOT READY',
-            fg='#00df88' if map_ready else '#ff5252'
-        )
+        self.update_mesh_status()
         self.patrol_start_button.config(state='disabled' if self.patrol_active() or self.patrol_stopping else 'normal')
         self.patrol_stop_button.config(state='normal' if self.patrol_active() and not self.patrol_stopping else 'disabled')
         self.root.after(150, self.update)
