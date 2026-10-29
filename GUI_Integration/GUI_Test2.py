@@ -121,6 +121,10 @@ class BridgeNode(Node):
         self.cancel_queued = {r: False for r in CONFIG}
         self.nav_clients = {}
 
+        # vegetation labels frame
+        self.vegetation_labels_frame = None
+        self.vegetation_last_wall = None
+        
         # Final 3D map readiness
         self.map_ready = False
 
@@ -135,8 +139,16 @@ class BridgeNode(Node):
         self.fire_location_frame = 'parrot1_odom'
         self.last_odom_wall = None
         self.aerial_odom_frame = 'parrot1_odom'
+
         self.fire_location_pub = self.create_publisher(
             PoseStamped, '/parrot1/vision/fire_location', 10
+        )
+
+        self.vegetation_labels_sub = self.create_subscription(
+            Image,
+            '/parrot1/vegetation/labels',
+            self.on_vegetation_labels,
+            qos_profile_sensor_data
         )
 
         # The GUI's own OpenCV detection triggers alerts during patrol.
@@ -196,6 +208,26 @@ class BridgeNode(Node):
                 msg.pose.position.y,
                 msg.pose.position.z
             )
+
+    # Receive RGB-D vegetation classification labels
+    def on_vegetation_labels(self, msg):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(
+                msg, desired_encoding='bgr8'
+            )
+
+            frame = cv2.resize(frame, (480, 270))
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            with self.lock:
+                self.vegetation_labels_frame = rgb
+                self.vegetation_last_wall = time.monotonic()
+
+        except Exception as exc:
+            self.get_logger().warning(
+                f'Vegetation labels error: {exc}'
+            )
+
 
     def on_manual_odometry(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -662,7 +694,8 @@ class Dashboard:
 
         # Create camera and status panes for each robot
         for robot, cfg in CONFIG.items():
-            pane = tk.Frame(cameras, bg=self.BG)
+            pane = tk.LabelFrame(cameras, text='Live Camera View', bg=self.BG, fg=self.FG, 
+                                font=('Arial', 11, 'bold'))
             pane.pack(side='left', fill='both', expand=True, padx=6)
             self.label(pane, cfg['name'].upper() + ' CAMERA', bold=True).pack(pady=3)
             view = tk.Label(pane, text='Waiting for camera...', bg='#0a1018', fg=self.FG,
@@ -675,6 +708,22 @@ class Dashboard:
             self.position_labels[robot].pack(pady=3)
             self.obstacle_labels[robot] = self.label(pane, 'Obstacle: waiting for LiDAR...', bold=True)
             self.obstacle_labels[robot].pack(pady=4)
+
+        # RGB-D classification labels from the teammate's detector.
+        vegetation_panel = tk.LabelFrame(
+            body, text='VEGETATION - LABELS (RGB-D)',
+            bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold')
+        )
+        vegetation_panel.pack(fill='x', padx=20, pady=8)
+        self.vegetation_image_label = tk.Label(
+            vegetation_panel, text='Waiting for /parrot1/vegetation/labels...',
+            bg='#0a1018', fg=self.FG, width=60, height=15
+        )
+        self.vegetation_image_label.pack(pady=10)
+        self.vegetation_status_label = self.label(
+            vegetation_panel, 'Detector: waiting for label images...'
+        )
+        self.vegetation_status_label.pack(pady=(0, 8))
 
         # Create navigation control sections for each robot
         for robot, cfg in CONFIG.items():
@@ -790,12 +839,12 @@ class Dashboard:
             return False
 
     def open_3d_map(self):
-        # Keep the button clickable even when the map is not ready.
-        with self.node.lock:
-            ready = self.node.map_ready
-        if not ready:
-            self.feedback.config(text='PLY not ready yet.')
-            return
+        # # Keep the button clickable even when the map is not ready.
+        # with self.node.lock:
+        #     ready = self.node.map_ready
+        # if not ready:
+        #     self.feedback.config(text='PLY not ready yet.')
+        #     return
             
         viewer = Path(__file__).resolve().parent / 'mesh_3D_model.py'
 
@@ -1061,6 +1110,8 @@ class Dashboard:
             obstacles = dict(self.node.obstacles)
             statuses = dict(self.node.status)
             last_times = dict(self.node.last_sensor_time)
+            vegetation_frame = self.node.vegetation_labels_frame
+            vegetation_last_wall = self.node.vegetation_last_wall
         now = self.node.get_clock().now().nanoseconds / 1e9
         for robot in CONFIG:
             if frames[robot] is not None:
@@ -1083,6 +1134,23 @@ class Dashboard:
                 self.obstacle_labels[robot].config(text=f'Obstacle: {level} | {info}', fg=color)
             self.status_labels[robot].config(text='Navigation: ' + statuses[robot])
             self.ready_labels[robot].config(text='Interface: ' + self.node.readiness(robot))
+        # Draw classification image in Tkinter's main thread.
+        if vegetation_frame is not None:
+            vegetation_photo = ImageTk.PhotoImage(
+                PILImage.fromarray(vegetation_frame)
+            )
+            self.photos['vegetation'] = vegetation_photo
+            self.vegetation_image_label.config(
+                image=vegetation_photo, text='', width=480, height=270
+            )
+        if vegetation_last_wall is None:
+            vegetation_status = 'Detector: waiting for /parrot1/vegetation/labels'
+        elif time.monotonic() - vegetation_last_wall > 2.0:
+            vegetation_status = 'Detector: labels stream stale (no recent images)'
+        else:
+            vegetation_status = 'Detector: receiving RGB-D classification labels'
+        self.vegetation_status_label.config(text=vegetation_status)
+
         with self.patrol_lock:
             proc = self.patrol_process
             if proc is not None and proc.poll() is not None and not self.patrol_stopping:
