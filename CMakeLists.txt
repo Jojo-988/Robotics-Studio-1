@@ -27,12 +27,17 @@ install(
     scripts/map_processor.py
     scripts/drone_cloud_diagnostic.py
     scripts/bird_map_snapshot.py
+    scripts/camera_bird_mapper.py
+    scripts/project_camera_sample.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+
+  ament_add_pytest_test(camera_projection_tests test/test_camera_projection.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 
   ament_add_pytest_test(map_statistics_tests test/test_map_statistics.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})

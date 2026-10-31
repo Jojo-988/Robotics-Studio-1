@@ -1,0 +1,19 @@
+camera_bird_mapper:
+  ros__parameters:
+    use_sim_time: true
+    image_topic: /parrot1/camera/image
+    camera_info_topic: /parrot1/camera/camera_info
+    camera_frame: parrot1_camera_link
+    target_frame: parrot1_odom
+    output_prefix: /parrot1/camera_bird_map
+    # Local 8 x 8 m integration canvas; outside pixels are counted, not wrapped.
+    resolution: 0.01
+    origin_x: -2.0
+    origin_y: -4.0
+    width: 800
+    height: 800
+    ground_z: 0.0
+    exclude_bottom: 0.10
+    process_hz: 1.0
+    pair_timeout_sec: 2.0
+    save_directory: ~/team-results/drone-camera/live
