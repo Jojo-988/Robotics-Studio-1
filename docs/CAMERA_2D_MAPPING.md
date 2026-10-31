@@ -122,3 +122,13 @@ Build currently emits the repository's package-naming warning and a missing
 pytest warning. The direct unittest/isolated ROS checks above were run; no claim
 is made that all colcon/pytest tests ran. No Git commit or push is performed by
 this integration task.
+
+## Additional live validation — 2026-11-01
+
+The subsequent 1.056 m forward strip and 0.264 m lateral move passed local
+coverage/preservation checks. Two selected ground texture regions had best
+integer alignment at zero shift. See the [camera test log](CAMERA_2D_MAPPING_TEST_LOG.md)
+for measurements, source paths and limits. Team GUI display/save/reset acceptance
+is still pending; rqt and terminal service checks are not GUI button tests.
+For paused simulation, also monitor wall-monotonic time since the last complete
+frame set: simulation-clock age alone cannot detect an absence of updates.

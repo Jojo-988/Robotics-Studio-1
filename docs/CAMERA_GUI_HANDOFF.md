@@ -89,3 +89,49 @@ This demonstrates local publication, expansion and saving; full seam inspection,
 independent geometric accuracy and the team's GUI acceptance remain separate.
 
 Full interface and limitations: CAMERA_2D_MAPPING.md in the same docs directory.
+
+## Additional live validation — 2026-11-01
+
+The subsequent 1.056 m forward strip and 0.264 m lateral move passed local
+coverage/preservation checks. Two selected ground texture regions had best
+integer alignment at zero shift. See the [camera test log](CAMERA_2D_MAPPING_TEST_LOG.md)
+for measurements, source paths and limits. Team GUI display/save/reset acceptance
+is still pending; rqt and terminal service checks are not GUI button tests.
+For paused simulation, also monitor wall-monotonic time since the last complete
+frame set: simulation-clock age alone cannot detect an absence of updates.
+
+## Backend precheck complete — GUI joint test sequence (2026-11-01)
+
+Backend save, reset and resumed acquisition passed. A separate timestamp-paired
+check confirmed RGB/alpha/mask all zero after reset, with a new epoch and unchanged
+geometry. See [test evidence](CAMERA_2D_MAPPING_TEST_LOG.md). Raw evidence is local
+to Zora's machine; it is not automatically included by pulling the repository.
+
+Run the following acceptance sequence on one machine with one simulation and one
+mapper. Keep ROS callbacks/service futures off the blocking UI path. No drone
+movement is needed for this first joint test.
+
+1. Start simulation and mapper, wait for valid_pixels > 0, then connect the GUI.
+   Confirm a complete retained image/mask/metadata set and correct RGBA display.
+2. Match exact output timestamps before display. On a new epoch, discard old-epoch
+   pending state but retain/reacquire the matching new image/mask set; metadata may
+   arrive after those images. Do not require arrival order or positive valid_pixels.
+   A zero-valid reset set is a legitimate display update.
+3. Click GUI Save once. Show pending state without freezing the UI, then show the
+   actual success/message path. On the mapper machine verify COMPLETE, PNGs and
+   metadata. A service response alone is not a file-integrity check.
+4. Pause Gazebo after saving, then click GUI Reset once. The response should succeed;
+   wait for a new-epoch coherent reset set. Old texture must disappear, mask/alpha
+   must be zero and displayed valid area must be zero. Do not wait for a new camera
+   image to clear the UI. Previously saved files must remain intact.
+5. Resume Gazebo. In the same new epoch, expect updated status, newer source stamp,
+   positive processed_frames/valid_pixels and restored image content. Keep a bounded
+   wait and report timeout explicitly instead of accepting retained reset metadata.
+6. Record screenshots before/reset/resumed, metadata epoch/version/output_stamp,
+   save response/path and any UI errors. Mark GUI acceptance PASS only after actual
+   GUI display and button tests; terminal-only checks do not satisfy this step.
+
+The first joint test does not need RViz or a second simulation. If the teammate's
+GUI launch starts Gazebo, agree which launch owns the simulator before starting it.
+Do not use Zora's local build path on a teammate's machine. ROS_LOCALHOST_ONLY=1
+is only suitable for same-machine testing, not cross-computer discovery.
