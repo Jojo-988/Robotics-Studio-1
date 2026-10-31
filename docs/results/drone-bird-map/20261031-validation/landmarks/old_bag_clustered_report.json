@@ -1,0 +1,41 @@
+{
+  "status": "OFFLINE_CANDIDATES_NOT_ACCEPTANCE",
+  "bag": "/home/zora/team-results/drone-bird-map/diagnostic-20261031-174614/stationary_cloud/stationary_cloud_0.db3",
+  "clouds": 53,
+  "tf_failures": [],
+  "targets": {
+    "tree": {
+      "frames": 53,
+      "supported_fits": 52,
+      "selected_points_range": [
+        28,
+        28
+      ],
+      "median_centre": [
+        4.005969529641074,
+        -3.991485583631545
+      ],
+      "centre_peak_to_peak_m": [
+        0.07715216602662345,
+        0.08276890654980873
+      ],
+      "median_radius_m": 0.17555299391114304,
+      "median_xy_error_m": 0.020284372666849418,
+      "median_p95_residual_m": 0.014766129152529773
+    },
+    "animal": {
+      "frames": 53,
+      "supported_fits": 0,
+      "selected_points_range": [
+        4,
+        4
+      ]
+    }
+  },
+  "limitations": [
+    "Reference geometry is from current large_demo; bag has no historical Gazebo entity poses, so historical landmark identity is conditional.",
+    "Fits are free centre/radius algebraic fits; ROI and nose exclusion use nominal geometry.",
+    "Per-frame repeatability is not independent mapping accuracy; simulated absolute odometry is used.",
+    "60 degree arc and 0.05 m residual are diagnostic gates, not team acceptance limits."
+  ]
+}

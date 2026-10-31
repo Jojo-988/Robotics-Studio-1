@@ -41,23 +41,24 @@ Agreement between these related sources is not independent pose accuracy evidenc
 | Ground reference | z = 0 m | z = 0 m |
 | Ground candidate | abs(z - ground_z) <= 0.05 m | Same |
 | Structure candidate | z - ground_z >= 0.15 m | Same |
-| Confirmation threshold | 3 accumulated frames | 3 accumulated frames |
+| Structure confirmation | 3 accumulated frames | At least 3 hits in a full 5-frame window |
 
 | Published value | Current accumulated-map meaning |
 |---|---|
 | -1 | Insufficient or unresolved evidence |
 | 0 | At least 3 ground-hit frames and no structure-hit frame |
-| 100 | At least 3 structure-hit frames; structure takes priority |
+| 100 | Structure confirmation satisfied in the selected mode; structure takes priority |
 
-The current implementation counts hits across the whole session, not a rolling
-window. Confirmed structures persist until reset or restart. A tentative
-structure hit blocks a ground classification even before structure confirmation.
-Missing returns do not prove free space. Ground candidates do not certify
-traversability. A mixed-evidence cell is included in the structure total,
-not an additional fourth map class.
+Simple-scene configuration uses `structure_confirmation_mode: cumulative`:
+three structure-hit frames anywhere in the session confirm a cell. Forest
+configuration uses `window`: at least three hits in a full five-frame window
+confirm a cell. Confirmations persist until reset/restart; they do not expire
+when the window moves. Reset clears both counts and window history.
 
-The proposed 3-of-5-frame structure rule has only been compared offline;
-it is not implemented in the running mapper. See the experiment log.
+Ground rules remain unchanged: a tentative structure hit blocks a ground
+classification even before confirmation. Missing returns do not prove free
+space. Mixed cells are a subset of structures, not a fourth class. Neither mode
+guarantees rejection of persistent or correlated false returns.
 
 ## ROS interfaces
 
@@ -140,8 +141,37 @@ and cannot resume an accumulator session.
 - [Experiment log](DRONE_2D_MAPPING_TEST_LOG.md)
 - [Verified saved-map sample](results/drone-bird-map/20261031-122803/README.MD)
 
-Remaining work: validate the candidate filtering rule during motion; check
-landmark positions and scale; capture a declared forest area with a recorded
-route; repeat export/reload checks for the final map. Ground-height assumptions,
+Window integration, bounded movement, scale and local landmark checks have
+now been performed; see the [validation index](DRONE_2D_MAPPING_VALIDATION.md).
+Remaining work: declared-area acquisition, longer-route/turning validation,
+frame-accounting investigation and final-map export/reload. Ground-height assumptions,
 occlusion, fixed extent, persistent false structures and simulation-assisted
 pose remain limitations. No whole-forest accuracy or coverage acceptance is claimed.
+
+
+## Read-only paired snapshot tool
+
+`bird_map_snapshot.py` subscribes only to the map and statistics topics. It does
+not publish velocity, reset mapping, or pause/resume Gazebo. It pairs exact integer
+source timestamps and checks frame, dimensions, resolution, origin XY, array length,
+three-class counts and classified fraction. Mixed evidence can only be range-checked
+from the published class map. Retained snapshots are accepted while paused.
+
+After building and sourcing the workspace, with the same ROS domain as the mapper:
+
+```bash
+ros2 run 41068_ignition_bringup bird_map_snapshot.py \
+  --output "$HOME/team-results/drone-bird-map/paired-$(date +%Y%m%d-%H%M%S)"
+```
+
+The output directory must not already exist. Successful captures contain `map.yaml`,
+`statistics.json`, and `validation.json`. A mismatch or wall-time timeout exits
+nonzero and writes `failure.json`; do not treat such a directory as a passed test.
+The default timeout is 15 seconds, configurable with `--timeout`.
+Optional `--map-topic` and `--statistics-topic` select other compatible outputs.
+Map/PGM export and odometry time synchronisation are separate operations.
+
+Additional statistics fields now identify `structure_confirmation_mode`,
+`structure_window_frames`, `min_structure_frames`, and `structure_window_fill`.
+The last field is zero in cumulative mode and after a reset, and grows to the
+window size in window mode. Consumers should ignore unknown JSON fields.

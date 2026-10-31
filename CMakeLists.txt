@@ -11,6 +11,7 @@ find_package(ament_cmake_python REQUIRED)
 
 ament_python_install_package(patrol)
 ament_python_install_package(rover_navigation)
+ament_python_install_package(map_data)
 
 find_package(ros_ign_interfaces REQUIRED)
 
@@ -24,12 +25,17 @@ install(
     scripts/rover_goal_navigation.py
     scripts/parrot1_navigation.py
     scripts/map_processor.py
+    scripts/drone_cloud_diagnostic.py
+    scripts/bird_map_snapshot.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+
+  ament_add_pytest_test(map_statistics_tests test/test_map_statistics.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 
   ament_add_pytest_test(coverage_patrol_tests test/test_coverage_patrol.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
@@ -54,6 +60,14 @@ if(BUILD_TESTING)
   ament_add_pytest_test(rover_ros_tests test/test_rover_ros.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
     ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=69 TIMEOUT 90)
+
+  ament_add_pytest_test(structure_window_tests test/test_structure_window.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+  ament_add_pytest_test(snapshot_pairing_tests test/test_snapshot_pairing.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+
+  ament_add_pytest_test(bird_grid_tests test/test_bird_grid.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 ament_package()

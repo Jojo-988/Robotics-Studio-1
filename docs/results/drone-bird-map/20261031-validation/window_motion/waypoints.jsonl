@@ -1,0 +1,5 @@
+{"label": "previous_preserved", "position": [2.0, 0.0, 0.8], "frames": 491, "ground": 4560, "structure": 662, "unknown": 97178, "tf_drops": 0}
+{"label": "A", "position": [2.0, 0.0, 0.8], "frames": 502, "ground": 4562, "structure": 662, "unknown": 97176, "tf_drops": 0}
+{"label": "B", "position": [2.2886290617235243, 0.0, 0.8], "frames": 525, "ground": 6639, "structure": 1042, "unknown": 94719, "tf_drops": 0}
+{"label": "A_return", "position": [2.0108948740648787, 0.0, 0.8], "frames": 545, "ground": 7297, "structure": 1115, "unknown": 93988, "tf_drops": 0}
+{"label": "before_save", "position": [2.0108948740648787, 0.0, 0.8], "frames": 547, "ground": 7300, "structure": 1116, "unknown": 93984, "tf_drops": 0}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "map_kind": "lidar_bird_eye_classification",
+  "frame_id": "parrot1_odom",
+  "source_stamp": {
+    "sec": 1814,
+    "nanosec": 860000000
+  },
+  "width": 320,
+  "height": 320,
+  "resolution": 0.1,
+  "origin": {
+    "x": -16.0,
+    "y": -16.0,
+    "yaw": 0.0
+  },
+  "accumulated_frames": 580,
+  "structure_confirmation_mode": "window",
+  "structure_window_frames": 5,
+  "min_structure_frames": 3,
+  "structure_window_fill": 5,
+  "mixed_cells": 176,
+  "tf_drops": 0,
+  "busy_skips": 0,
+  "total_cells": 102400,
+  "ground_candidate_cells": 7310,
+  "structure_cells": 1125,
+  "unknown_cells": 93965,
+  "classified_fraction": 0.082373046875
+}

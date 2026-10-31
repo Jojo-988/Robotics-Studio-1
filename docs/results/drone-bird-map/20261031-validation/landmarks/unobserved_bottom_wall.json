@@ -1,0 +1,25 @@
+{
+  "status": "CONDITIONAL_SURFACE_CHECK_NOT_GLOBAL_ACCURACY",
+  "bag": "/home/zora/team-results/drone-bird-map/diagnostic-20261031-174614/stationary_cloud/stationary_cloud_0.db3",
+  "bag_sha256": "87ff9b8503adf09706e0a1b8b510464b2a7fdf1ae7e6486cbf2e310287fc9c0c",
+  "comparison": "structure-comparison-20261031-191757-979127",
+  "cloud_frames": 53,
+  "tf_failures": [],
+  "reference": "Bottom wall visual plane y=-12.5; world large_demo; x [-10,10)",
+  "raw_point_roi": "y [-13,-12), z [0.15,4.0]; no rigid alignment fitted",
+  "pooled_raw_surface": {
+    "count": 0,
+    "status": "INSUFFICIENT_SUPPORT"
+  },
+  "same_bag_confirmed_grid_surface": {
+    "count": 0,
+    "status": "INSUFFICIENT_SUPPORT"
+  },
+  "limitations": [
+    "Broad ROI is candidate association; other structures could contaminate it.",
+    "Historical Gazebo ground truth is not in this bag; current scene geometry is a conditional reference.",
+    "Confirmed grid uses all structure heights, while raw surface ROI is height-limited.",
+    "0.1m grid cell centres have up to 0.05m quantization along an axis; no coverage claim from sparse hits.",
+    "Repeated stationary samples are not independent accuracy trials; no team acceptance tolerance."
+  ]
+}

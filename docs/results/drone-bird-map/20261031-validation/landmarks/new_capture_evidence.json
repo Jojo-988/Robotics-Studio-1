@@ -1,0 +1,329 @@
+{
+  "status": "MEASURED_NOT_ACCEPTANCE",
+  "states": [
+    {
+      "file": "state_after.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": true
+    },
+    {
+      "file": "state_before.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": true
+    },
+    {
+      "file": "state_running_0.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": false
+    },
+    {
+      "file": "state_running_1.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": false
+    },
+    {
+      "file": "state_running_2.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": false
+    },
+    {
+      "file": "state_running_3.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": false
+    },
+    {
+      "file": "state_running_4.txt",
+      "models": {
+        "forest_wall2": [
+          12.5,
+          -9.32,
+          2.0,
+          1.5708,
+          0.0,
+          -1.5708
+        ],
+        "demo_animal": [
+          -4.0,
+          4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "demo_tree_healthy": [
+          4.0,
+          -4.0,
+          0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "parrot1": [
+          2.0109,
+          0.0,
+          0.8,
+          0.0,
+          -0.0,
+          0.0
+        ]
+      },
+      "paused": false
+    }
+  ],
+  "state_pose_peak_to_peak": {
+    "forest_wall2": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "demo_animal": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "demo_tree_healthy": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "parrot1": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "raw_odometry_peak_to_peak_xyz": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "cloud_frames": 64,
+  "tf_failures": [],
+  "second_landmark": "right lower wall x=12.5, y[-10,-3); held-out segment, same wall family as scale check",
+  "raw_surface_error_m": {
+    "count": 1600,
+    "signed_median_m": -0.0047658455890911,
+    "p95_absolute_m": 0.04090255984124364
+  },
+  "accumulated_grid_surface_error_m": {
+    "count": 47,
+    "signed_median_m": -0.049999576061964035,
+    "p95_absolute_m": 0.050000425428152084
+  },
+  "limitations": [
+    "Entity states are periodic samples, not simultaneous per-cloud ground truth.",
+    "Grid is the live accumulated map including earlier history; do not call it a fresh same-bag reconstruction.",
+    "Broad wall ROI could include other surfaces; no acceptance tolerance established.",
+    "Missing ray hits are not free space and not positional error."
+  ]
+}

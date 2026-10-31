@@ -1,0 +1,25 @@
+drone_cloud_diagnostic:
+  ros__parameters:
+    use_sim_time: true
+
+    cloud_topic: /parrot1/scan/points
+    target_frame: parrot1_odom
+
+    grid_resolution: 0.10
+    grid_origin_x: -10.0
+    grid_origin_y: -10.0
+    grid_width: 200
+    grid_height: 200
+
+    ground_z: 0.0
+    ground_tolerance: 0.05
+    structure_min_height: 0.15
+
+    min_ground_frames: 3
+    min_structure_frames: 3
+
+    roi_x: 2.0
+    roi_y: 0.0
+    roi_half_size: 1.0
+    structure_confirmation_mode: cumulative
+    structure_window_frames: 5

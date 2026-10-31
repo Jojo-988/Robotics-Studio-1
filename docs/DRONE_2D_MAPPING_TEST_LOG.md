@@ -344,12 +344,12 @@ empty counts and cannot be compared directly with the longer live session's
 structure total. It does not validate moving-flight performance or guarantee
 that long-running false accumulation will stop.
 
-**The candidate rule has not been integrated into the mapper.** The current
-source still uses lifetime accumulated counts. Offline outputs and the tool
+At the time of this offline comparison, the candidate rule had not yet been
+integrated. Subsequent window-mode integration is recorded below. Offline outputs and the tool
 remain in the local Windows project under `mapping-test-20261031`; the tool's
 bag path needs parameterisation before publishing it as a reusable team utility.
 
-## Current status and next work
+## Status recorded before window integration (historical)
 
 - Grid unit tests: 6 passed; existing map-statistics tests: 7 passed on review.
 - Working prototype: timestamped point transformation, classification, cumulative
@@ -364,3 +364,55 @@ bag path needs parameterisation before publishing it as a reusable team utility.
 Local reports referenced above are supporting experiment records, not files
 already included in this repository. The committed sample file list is in its
 own README; missing screenshots must not be presented as archived evidence.
+
+
+## 2026-10-31: window integration and bounded forest motion
+
+Window mode (5 frames, 3 hits) is now integrated. The production grid module
+matched all 53 offline reference frames, with zero differing structure cells;
+final baseline/candidate counts were 774/569. Reset cleared the window fill to
+zero and all 102400 cells to unknown; resumed acquisition rebuilt the window.
+
+A bounded forest trial preserved the existing map and moved from (2,0,0.8)
+to (2.288629,0,0.8), returning to (2.010895,0,0.8) m. Return error was 0.010895 m
+in simulation odometry, not an independent map accuracy measurement.
+Final snapshot: 547 frames, 7300 ground candidates, 1116 structures, 93984 unknown.
+No old confirmed structures disappeared. Of 454 new structure cells, 392 lay
+within one cell of old structures; this alone cannot distinguish newly observed
+surfaces from thickening. TF drops at recorded stops were zero.
+Independent save/reload preserved frame, geometry and all cells (zero differences).
+
+The A snapshot had mismatched map/statistics timestamps. Its image-array checks
+remain usable, but it must not be treated as a time-paired snapshot. B, return
+and final snapshots matched. The verification helper now pairs by integer source
+timestamp and checks counts before accepting output. Regression testing rejects
+the old A pair and accepts the other three. Local detailed evidence is in
+`mapping-test-20261031/window-motion-20261031-193607` in the Windows project.
+
+Remaining acceptance work: declared-area acquisition, landmark/scale evaluation,
+turning and longer-route validation. No full-forest or navigation certification.
+
+
+## 2026-10-31: scale and local landmarks — latest follow-up
+
+Selected left/right wall spacing was approximately 25.0 m against the nominal
+25 m. This supports scale consistency in those regions, not full-map accuracy.
+The scene file used by the running simulator matched the source-file hash.
+
+A stationary follow-up captured 64 clouds with periodic Gazebo entity states.
+The inspected entities and raw odometry showed no pose change across recorded
+samples. Historical TF lookup succeeded for all 64 clouds. Tree fitting supported
+58 frames: median XY deviation 0.0206 m, median fitted radius 0.1728 m against
+0.18 m. The held-out right lower wall segment had 1600 candidate returns with
+p95 absolute surface deviation 0.0409 m. These are local raw-cloud measurements;
+the accumulated grid is coarser and includes earlier observations.
+
+Animal fitting remained unsupported (3–4 points/frame). The earlier bottom-wall
+check also had no observations and was not counted as passed. Mapper accepted-frame
+count increased by 33 while the new bag recorded 64 clouds; the cause remains open.
+
+See the [validation index](DRONE_2D_MAPPING_VALIDATION.md) for the latest status,
+limits and remaining work. Representative outputs are now included in
+[curated evidence](results/drone-bird-map/20261031-validation/README.md).
+Earlier references to local-only evidence remain historical; raw bags/full logs
+are still local-only. This update does not claim those datasets are in Git.

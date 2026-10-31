@@ -1,0 +1,122 @@
+[
+  {
+    "file": "window_motion/drone_bird_map.pgm",
+    "source_local_relative": "window-motion-20261031-193607/drone_bird_map.pgm",
+    "bytes": 102415,
+    "sha256": "1c97712f6f9d5e810b2e19b07ce7acfd61fad39b595658100077e5ef6882e85e"
+  },
+  {
+    "file": "window_motion/drone_bird_map.yaml",
+    "source_local_relative": "window-motion-20261031-193607/drone_bird_map.yaml",
+    "bytes": 127,
+    "sha256": "df08264265953d664ed4955e693cc59f33cc76decea2182de5384be253225892"
+  },
+  {
+    "file": "window_motion/map_preview.png",
+    "source_local_relative": "window-motion-20261031-193607/final_bird_map_preview.png",
+    "bytes": 6520,
+    "sha256": "7571f5aa241a8af88dd26f98d20e54716486f99bef18133bcdabe5aeeeaa5115"
+  },
+  {
+    "file": "window_motion/roundtrip_result.json",
+    "source_local_relative": "window-motion-20261031-193607/roundtrip_result.json",
+    "bytes": 234,
+    "sha256": "c694d0b32d02fd857a8baf7d00922e99e96dea5846cd96171acda40a00a2c4a8"
+  },
+  {
+    "file": "window_motion/final_statistics.json",
+    "source_local_relative": "window-motion-20261031-193607/before_save_statistics.json",
+    "bytes": 658,
+    "sha256": "9aa30c86fb39fcc409281e8a2a60392338dc46a3917ae609de6e55f3fe7a09c8"
+  },
+  {
+    "file": "window_motion/waypoints.jsonl",
+    "source_local_relative": "window-motion-20261031-193607/waypoints.jsonl",
+    "bytes": 712,
+    "sha256": "09753670c996f494f6eb910e47b5f04e2e6e4558c1c0b3a94d5f39155f1290ce"
+  },
+  {
+    "file": "wall_scale/report.json",
+    "source_local_relative": "wall-scale-20261031/scale_report.json",
+    "bytes": 2816,
+    "sha256": "4f2054fc35a2b61afd80a06c06e829cc9779c9bfac9d80ef922b44c29ae883f1"
+  },
+  {
+    "file": "wall_scale/selected_regions.png",
+    "source_local_relative": "wall-scale-20261031/wall_regions.png",
+    "bytes": 10880,
+    "sha256": "df76cb1cf1c8b59c43def1bb357fee05c434c4712ecb88b9b250feefd7aa7acb"
+  },
+  {
+    "file": "landmarks/candidate_regions.png",
+    "source_local_relative": "landmarks-20261031/candidates/candidate_crops.png",
+    "bytes": 8653,
+    "sha256": "c7d2d89b4a60b3b6007f5456262a77f0790250bdaadc13ed9239a2985bdc496e"
+  },
+  {
+    "file": "landmarks/old_bag_clustered_report.json",
+    "source_local_relative": "landmarks-20261031/clustered-fit/report.json",
+    "bytes": 1285,
+    "sha256": "0b5f21dc75bcd7d08fad0c53ad1e74e0792f3c32ceb8647342ca53070e86aa39"
+  },
+  {
+    "file": "landmarks/unobserved_bottom_wall.json",
+    "source_local_relative": "landmarks-20261031/holdout-wall/report.json",
+    "bytes": 1226,
+    "sha256": "85be14f6f676adff64bbb52ff2d8f9c990e289af91dd49f395f514b2ab635acf"
+  },
+  {
+    "file": "landmarks/new_capture_evidence.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/evidence_report.json",
+    "bytes": 5682,
+    "sha256": "283384160038ce4b20990e8652d4dd0d695c72b59c78b78c1c08b7bd3b26746d"
+  },
+  {
+    "file": "landmarks/new_capture_fits.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/fits/report.json",
+    "bytes": 1231,
+    "sha256": "b95c8982e85f843febb42cbb97a48c03037065507a8c1a88ae4170d7da36fb29"
+  },
+  {
+    "file": "landmarks/bag_info.txt",
+    "source_local_relative": "landmark-acquisition-20261031-204320/bag_info.txt",
+    "bytes": 1093,
+    "sha256": "af891d034215036f7e53b1f537d5dff52dd225c95ec601b2cebe00cb35c6b1b2"
+  },
+  {
+    "file": "landmarks/before_statistics.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/before/statistics.json",
+    "bytes": 658,
+    "sha256": "9aa30c86fb39fcc409281e8a2a60392338dc46a3917ae609de6e55f3fe7a09c8"
+  },
+  {
+    "file": "landmarks/after_statistics.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/after/statistics.json",
+    "bytes": 663,
+    "sha256": "238839daaebfc6d943f553b32699169c25cb6aa53a42a8dcc16fff3dcf362dcf"
+  },
+  {
+    "file": "landmarks/before_pair_validation.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/before/validation.json",
+    "bytes": 485,
+    "sha256": "01c1b2191db7aeb9e3935cc717f4a61859ca377316972edc7d7c41b442448695"
+  },
+  {
+    "file": "landmarks/after_pair_validation.json",
+    "source_local_relative": "landmark-acquisition-20261031-204320/after/validation.json",
+    "bytes": 485,
+    "sha256": "75a6aef7a329c166c18a176e429862351e18481f0b9bd9e0c1a8fded4bd26240"
+  },
+  {
+    "file": "window_rule/comparison.json",
+    "source_local_relative": "structure-comparison-20261031-191757-979127/comparison.json",
+    "bytes": 1565,
+    "sha256": "2b1c452a578ad78ae2c0cab2d1b10409e49421bb8b0e2e2c1e2c3f62c996ebfb"
+  },
+  {
+    "file": "window_rule/comparison.png",
+    "source_local_relative": "structure-comparison-20261031-191757-979127/structure_difference.png",
+    "bytes": 4685,
+    "sha256": "635ae2ee94efaa79bd26a0f3c73219860a4d81c9a9e3965b3c9a4c9f101b31b5"
+  }
+]

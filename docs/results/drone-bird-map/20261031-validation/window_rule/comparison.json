@@ -1,0 +1,49 @@
+{
+  "bag": "/home/zora/team-results/drone-bird-map/diagnostic-20261031-174614/stationary_cloud/stationary_cloud_0.db3",
+  "frames": 53,
+  "skipped": [],
+  "module_verification": {
+    "module_file": "/home/zora/team-repos/Robotics-Studio-1/map_data/bird_grid.py",
+    "reference_mask_file": "/mnt/d/Codex/Projects/robot-studio/mapping-test-20261031/structure-comparison-20261031-175749-125049/masks.npz",
+    "max_per_frame_structure_differences": 0,
+    "final_classification_differences": 0,
+    "saved_candidate_structure_differences": 0,
+    "saved_baseline_structure_differences": 0,
+    "mixed_mask_matches": true,
+    "pass": true
+  },
+  "window": 5,
+  "required_hits": 3,
+  "latch_confirmed": true,
+  "window_span_seconds_min_max": [
+    1.3299999999999272,
+    1.3400000000000318
+  ],
+  "note": "Region retention is relative to baseline, not ground-truth accuracy. Unconfirmed structure remains unknown; no new free-space inference.",
+  "regions": {
+    "whole_grid": {
+      "baseline": 774,
+      "window": 569,
+      "removed": 205,
+      "retained_fraction": 0.7351421188630491
+    },
+    "southwest_x[-13,-4)_y[-13,-2)": {
+      "baseline": 232,
+      "window": 66,
+      "removed": 166,
+      "retained_fraction": 0.28448275862068967
+    },
+    "top_boundary_y[12,13)_x[-12,12)": {
+      "baseline": 123,
+      "window": 114,
+      "removed": 9,
+      "retained_fraction": 0.926829268292683
+    },
+    "right_boundary_x[12,13)_y[-10,10)": {
+      "baseline": 128,
+      "window": 120,
+      "removed": 8,
+      "retained_fraction": 0.9375
+    }
+  }
+}

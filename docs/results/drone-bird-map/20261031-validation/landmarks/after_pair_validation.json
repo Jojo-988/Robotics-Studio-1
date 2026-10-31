@@ -1,0 +1,15 @@
+{
+  "pass": true,
+  "source_stamp_ns": 1814860000000,
+  "frame_id": "parrot1_odom",
+  "counts": {
+    "total_cells": 102400,
+    "unknown_cells": 93965,
+    "ground_candidate_cells": 7310,
+    "structure_cells": 1125
+  },
+  "map_topic": "/parrot1/bird_map",
+  "statistics_topic": "/parrot1/bird_map_statistics",
+  "wait_wall_seconds": 1.1502174410015868,
+  "limitation": "Retained snapshot allowed; does not prove live updates or independent geometric accuracy. No odometry pairing."
+}

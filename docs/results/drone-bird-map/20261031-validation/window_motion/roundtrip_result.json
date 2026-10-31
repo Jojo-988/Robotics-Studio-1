@@ -1,0 +1,16 @@
+{
+  "same_frame": true,
+  "same_geometry": true,
+  "changed_cells": 0,
+  "before_counts": {
+    "-1": 93984,
+    "100": 1116,
+    "0": 7300
+  },
+  "after_counts": {
+    "-1": 93984,
+    "100": 1116,
+    "0": 7300
+  },
+  "pass": true
+}

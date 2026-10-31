@@ -1,0 +1,16 @@
+
+Files:             bag_0.db3
+Bag size:          46.4 MiB
+Storage id:        sqlite3
+Duration:          29.481514225s
+Start:             Oct 31 2026 20:43:22.225175501 (1793439802.225175501)
+End:               Oct 31 2026 20:43:51.706689726 (1793439831.706689726)
+Messages:          7111
+Topic information: Topic: /parrot1/bird_map_statistics | Type: std_msgs/msg/String | Count: 34 | Serialization Format: cdr
+                   Topic: /clock | Type: rosgraph_msgs/msg/Clock | Count: 5308 | Serialization Format: cdr
+                   Topic: /parrot1/odom | Type: nav_msgs/msg/Odometry | Count: 639 | Serialization Format: cdr
+                   Topic: /parrot1/scan/points | Type: sensor_msgs/msg/PointCloud2 | Count: 64 | Serialization Format: cdr
+                   Topic: /parrot1/odometry | Type: nav_msgs/msg/Odometry | Count: 426 | Serialization Format: cdr
+                   Topic: /parrot1/tf | Type: tf2_msgs/msg/TFMessage | Count: 639 | Serialization Format: cdr
+                   Topic: /parrot1/tf_static | Type: tf2_msgs/msg/TFMessage | Count: 1 | Serialization Format: cdr
+

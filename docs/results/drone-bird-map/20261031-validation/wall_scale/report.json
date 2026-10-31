@@ -1,0 +1,59 @@
+{
+  "status": "MEASURED_NOT_ACCEPTANCE",
+  "map": "/mnt/d/Codex/Projects/robot-studio/mapping-test-20261031/paired-readonly-20261031-1950/map.yaml",
+  "map_sha256": "5da4be20b6612085886ddfcd1b452a42b12df20c13d358648501a820af4835e4",
+  "world": "/home/zora/team-repos/Robotics-Studio-1/worlds/large_demo.sdf",
+  "world_sha256": "2af8f83bbfe53bde9e71a628b0e599e2270b38f9b3d174270d08b9c6c9030590",
+  "frame_id": "parrot1_odom",
+  "resolution_m": 0.10000000149011612,
+  "nominal_wall_plane_spacing_m": 25.0,
+  "measured_x_separation_at_y_m": {
+    "0.0": 24.991731432380988,
+    "3.0": 25.00235085932681,
+    "6.0": 25.01297028627263
+  },
+  "scale_ratio_at_y3": 1.0000940343730724,
+  "signed_width_error_m": 0.0023508593268104505,
+  "absolute_relative_width_error_percent": 0.00940343730724269,
+  "fits": {
+    "left": {
+      "cell_count": 84,
+      "occupied_bins": 17,
+      "span_m": 9.900000147521496,
+      "slope": -0.0032647955318289438,
+      "intercept_m": -12.490051922887027,
+      "median_abs_residual_m": 0.04689819500292172,
+      "p95_abs_residual_m": 0.06528849845111231,
+      "fit_description": "normal_coordinate = slope * along_coordinate + intercept; medians in 0.5 m bins"
+    },
+    "right": {
+      "cell_count": 140,
+      "occupied_bins": 20,
+      "span_m": 9.900000147521496,
+      "slope": 0.0002750134501117944,
+      "intercept_m": 12.50167950949396,
+      "median_abs_residual_m": 0.051156558123946136,
+      "p95_abs_residual_m": 0.05364680485764484,
+      "fit_description": "normal_coordinate = slope * along_coordinate + intercept; medians in 0.5 m bins"
+    },
+    "top": {
+      "cell_count": 225,
+      "occupied_bins": 36,
+      "span_m": 19.900000296533108,
+      "slope": -0.0006543803000664711,
+      "intercept_m": 12.484639031571865,
+      "median_abs_residual_m": 0.05917748741422806,
+      "p95_abs_residual_m": 0.07112646931313783,
+      "fit_description": "normal_coordinate = slope * along_coordinate + intercept; medians in 0.5 m bins"
+    }
+  },
+  "roi_definition": "Left/right: x within 0.5 m of nominal wall, y [-2,8). Top: y within 0.5 m of nominal wall, x [-10,10).",
+  "limitations": [
+    "Association assumes map axes approximately align with world axes; verify overlay. No coordinate alignment was estimated.",
+    "SDF visual wall planes are the nominal reference; 0.01 m collision thickness and actual sensor rendering can change observed surfaces.",
+    "Cell centres quantize measurements at 0.1 m resolution. Sub-cell fit values do not establish sub-cell absolute accuracy.",
+    "Width is x separation at common y, not a general perpendicular distance between nonparallel lines.",
+    "Residual describes wall scatter/thickness, not independent global map accuracy.",
+    "No team-agreed acceptance tolerance or confirmed tree landmarks supplied."
+  ]
+}
