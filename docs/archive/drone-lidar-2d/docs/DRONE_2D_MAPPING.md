@@ -1,3 +1,5 @@
+> **Archived 2026-11-01 — retired drone LiDAR 2D prototype.** Commands and results below are historical; removed runtime code is available at Git commit `e1e091e`. Use the current camera mapping documentation for GUI integration.
+
 # Drone 2D Bird's-eye Mapping
 
 ## Status and scope

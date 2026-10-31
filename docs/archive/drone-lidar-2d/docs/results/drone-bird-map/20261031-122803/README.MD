@@ -1,3 +1,5 @@
+> **Archived 2026-11-01 — retired drone LiDAR 2D prototype.** Commands and results below are historical; removed runtime code is available at Git commit `e1e091e`. Use the current camera mapping documentation for GUI integration.
+
 # Saved drone bird's-eye grid: 2026-10-31 12:28:03
 
 This directory contains an earlier simple-scene prototype snapshot and the

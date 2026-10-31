@@ -1,3 +1,5 @@
+> **Archived 2026-11-01 — retired drone LiDAR 2D prototype.** Commands and results below are historical; removed runtime code is available at Git commit `e1e091e`. Use the current camera mapping documentation for GUI integration.
+
 # Curated drone mapping evidence — 2026-10-31
 
 This directory contains a small selection of measured results, not the complete

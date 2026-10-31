@@ -1,3 +1,5 @@
+> **Archived 2026-11-01 — retired drone LiDAR 2D prototype.** Commands and results below are historical; removed runtime code is available at Git commit `e1e091e`. Use the current camera mapping documentation for GUI integration.
+
 # Offline drone mapping validation tools
 
 These tools read saved data. They do not publish ROS commands, move the drone,

@@ -1,3 +1,5 @@
+> **Archived 2026-11-01 — retired drone LiDAR 2D prototype.** Commands and results below are historical; removed runtime code is available at Git commit `e1e091e`. Use the current camera mapping documentation for GUI integration.
+
 # Drone mapping validation and evidence index
 
 Status: 2026-10-31. The system is a simulation-assisted LiDAR XY classification
@@ -11,7 +13,7 @@ complete forest coverage, navigation safety or independent SLAM accuracy.
 3. [Curated evidence](results/drone-bird-map/20261031-validation/README.md).
 4. [Offline tools](../tools/drone_mapping/README.md).
 
-The Husky trail report [quality_check.md](quality_check.md) describes a separate
+The Husky trail report [quality_check.md](../../../quality_check.md) describes a separate
 robot/map and must not be treated as drone mapping evidence.
 
 ## Results and limits
