@@ -135,3 +135,33 @@ The first joint test does not need RViz or a second simulation. If the teammate'
 GUI launch starts Gazebo, agree which launch owns the simulator before starting it.
 Do not use Zora's local build path on a teammate's machine. ROS_LOCALHOST_ONLY=1
 is only suitable for same-machine testing, not cross-computer discovery.
+
+
+## Optional high-altitude profile — 2026-11-01
+
+The original default remains the low-altitude 8 x 8 m canvas at 0.01 m/pixel.
+For the tested 15 m experiment, use the separate 80 x 80 m profile at 0.1 m/pixel:
+
+```bash
+ros2 launch 41068_ignition_bringup camera_2d_mapping.launch.py \
+  params_file:="$(ros2 pkg prefix 41068_ignition_bringup)/share/41068_ignition_bringup/config/camera_mapping_height15.yaml"
+```
+
+Rebuild and source your own workspace after pulling this configuration. Start only
+one mapper. This launch reuses the running simulation; it does not set altitude,
+tilt the camera, start patrol, or move the drone. The tested setup uses body height
+15 m, camera height about 14.85 m and downward camera pitch 1.570796 rad. If the
+integrated system already bridges CameraInfo, pass start_camera_info_bridge:=false.
+Output topics and Save/Reset services are unchanged.
+
+Other heights and tilted cameras require separate checks. An oversized-projection
+warning calls for checking actual intrinsics, pose and resolution; do not simply
+increase allocation limits. This profile is not proof of validity at every height.
+
+The [saved target sample](results/camera-height15-20261101/target_after.png) and
+[test review](CAMERA_2D_MAPPING_TEST_LOG.md#15-m-patrol-and-offline-target-review--2026-11-01)
+include a 250 x 250 crop at 0.1 m/pixel with origin (-12.5,-12.5).
+Use its target_metadata.json for static display; live full-canvas images retain
+their own origin (-40,-40). Cropping is not implemented in the live mapper by this
+change. Ground-plane approximation, canopy occlusion and raised-object parallax
+remain. No new team-GUI acceptance result is claimed.

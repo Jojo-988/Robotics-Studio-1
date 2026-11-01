@@ -1,0 +1,23 @@
+{
+  "source_directory": "/home/zora/team-results/drone-camera/height15-live/20261101T063047_829115Z_aa722a53",
+  "frame_id": "parrot1_odom",
+  "epoch_id": "aa722a53-a01f-4d51-ad71-0c0ed4411bbe",
+  "map_version": 2019,
+  "resolution_m_per_pixel": 0.1,
+  "width": 250,
+  "height": 250,
+  "origin_lower_left": {
+    "x": -12.5,
+    "y": -12.5,
+    "yaw": 0
+  },
+  "image_axes": "right=+X, up=+Y; row 0 has highest Y",
+  "source_pixel_box_xyxy": [
+    275,
+    275,
+    525,
+    525
+  ],
+  "mask_semantics": "sampled projection, not ground visibility or navigability",
+  "target_assumption": "25m square forest plane centered on world origin; world XY aligned with odom"
+}

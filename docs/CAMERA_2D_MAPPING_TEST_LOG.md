@@ -169,3 +169,54 @@ Save before reset. During pause, simulation time may stop: source_stamp age alon
 cannot detect lack of arrivals. GUI should also track wall-monotonic time since
 the last completed frame set, and distinguish paused/no-update from a known error.
 No GUI acceptance result should be marked PASS based solely on a terminal call.
+
+
+## 15 m patrol and offline target review — 2026-11-01
+
+Evidence: [machine-readable review](results/camera-height15-20261101/review.json),
+[before/after target](results/camera-height15-20261101/target_comparison.png).
+The ground comparison image and extended delivery notes remain local; the numerical
+ROI results are included in review.json and summarized below.
+
+User-provided patrol logs report COMPLETE, 16/16 waypoints, no health holds, and
+zero cmd_vel publishers after clean exit. Saved maps have the same geometry and
+epoch. Offline checks verified COMPLETE markers, binary masks, alpha/mask equality
+and metadata pixel counts. Old valid pixels lost: 0. Target sampling increased
+94% to 100%, adding 37.5 m2 within the selected 25 x 25 m target. The target assumes
+the world-origin forest plane and world/odom XY alignment, not surveyed ground truth.
+
+Two previously selected exposed-ground candidate patches have best integer shifts
+(0,0) in a +/-5 pixel RGB-MAE search, with MAE 2.1454 and 2.1251 on a 0..255 scale.
+958 and 833 pixels changed, respectively. Visual inspection found no obvious local
+double edges. This does not establish subpixel or whole-map absolute accuracy.
+Trees, raised objects and roof appearance still differ; planar parallax and scene
+changes cannot be separated using these two mosaics alone.
+
+Saved endpoint tf_timeout, invalid and outside_frames counts are zero. This is
+endpoint evidence, not a continuous frame-by-frame audit. Full-canvas new pixels
+include areas outside the forest target; mask coverage is not visible-ground or
+navigability coverage. The result supports an overview prototype, not an
+orthorectified survey map. Team GUI integration acceptance remains a separate test.
+
+The earlier GUI acceptance section records the state at that earlier inspection;
+it is not a claim about the teammate's latest GUI implementation.
+
+
+## Offline projection overlay regression tests
+
+The reusable comparison command remains in scripts/compare_camera_projections.py.
+Its synthetic regression tests now live in test/test_projection_overlay.py as
+unittest.TestCase tests. Importing the test module does not execute comparisons.
+The test resolves the comparison tool from the repository root, not its own directory.
+
+Run from the repository root (Python dependencies: NumPy and Pillow; no simulation needed):
+
+```bash
+python3 -m unittest discover -s test -p 'test_projection_overlay.py' -v
+```
+
+Tests cover world-coordinate placement, overlap count, identical overlapping
+texture, generated comparison output, and explicit rejection of the same input
+sample. They do not validate physical camera calibration or real-scene accuracy.
+Commit the test together with scripts/compare_camera_projections.py; the old
+scripts/test_projection_overlay.py entry point has been retired.

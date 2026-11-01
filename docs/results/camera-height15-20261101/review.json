@@ -1,0 +1,58 @@
+{
+  "scope": "saved_mask_integrity_and_two_local_texture_candidates_not_absolute_accuracy",
+  "before": "/home/zora/team-results/drone-camera/height15-live/20261101T062817_141278Z_aa722a53",
+  "after": "/home/zora/team-results/drone-camera/height15-live/20261101T063047_829115Z_aa722a53",
+  "old_pixels_lost": 0,
+  "new_pixels": 129758,
+  "target_fraction_before": 0.94,
+  "target_fraction_after": 1.0,
+  "target_new_area_m2": 37.5,
+  "rois": [
+    {
+      "roi_canvas_xyxy": [
+        479,
+        306,
+        517,
+        332
+      ],
+      "zero_shift_rgb_mae": 2.145411605937922,
+      "best_mae_dx_dy": [
+        2.145411605937922,
+        0,
+        0
+      ],
+      "best_on_search_boundary": false,
+      "changed_pixels": 958
+    },
+    {
+      "roi_canvas_xyxy": [
+        479,
+        341,
+        518,
+        363
+      ],
+      "zero_shift_rgb_mae": 2.125097125097125,
+      "best_mae_dx_dy": [
+        2.125097125097125,
+        0,
+        0
+      ],
+      "best_on_search_boundary": false,
+      "changed_pixels": 833
+    }
+  ],
+  "errors": {
+    "tf_timeout": [
+      0,
+      0
+    ],
+    "invalid": [
+      0,
+      0
+    ],
+    "outside_frames": [
+      0,
+      0
+    ]
+  }
+}
