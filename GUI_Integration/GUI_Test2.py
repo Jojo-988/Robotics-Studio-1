@@ -176,6 +176,12 @@ class BridgeNode(Node):
                                  self.on_manual_odometry, qos_profile_sensor_data)
         self.manual_timer = self.create_timer(0.05, self.manual_control_tick)
 
+        # A true event must be emitted by the patrol node on successful completion.
+        self.patrol_completed = False
+        self.create_subscription(Bool, '/parrot1/coverage_patrol/completed',
+                                 self.on_patrol_completed, 10)
+
+
         # self.rover_goal = None
         # self.rover_started = None
         # self.rover_pose = None
@@ -195,6 +201,11 @@ class BridgeNode(Node):
                 lambda msg, r=robot: self.on_odom(r, msg), qos_profile_sensor_data)
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
+
+    def on_patrol_completed(self, msg):
+        if msg.data:
+            with self.lock:
+                self.patrol_completed = True
 
     def on_mesh_exported(self, msg):
         # Called from the ROS worker thread; Tkinter handles validation/display.
@@ -671,6 +682,9 @@ class Dashboard:
         self.patrol_stopping = False
         self.patrol_shutdown_thread = None
         self.closing = False
+        self.return_home_pending = False
+        self.return_home_deadline = None
+        self.return_home_reason = None
 
         # Dynamically locate workspace and reconstructed mesh
         self.repo_root = Path(__file__).resolve().parent.parent
@@ -787,7 +801,7 @@ class Dashboard:
                                              fg='white', command=self.start_patrol)
         self.patrol_start_button.grid(row=0, column=3, padx=8)
         self.patrol_stop_button = tk.Button(patrol, text='STOP PATROL', bg='#b72d32',
-                                            fg='white', command=self.stop_patrol)
+                                            fg='white', command=self.stop_patrol_and_return)
         self.patrol_stop_button.grid(row=0, column=4, padx=8)
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
         self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
@@ -929,12 +943,13 @@ class Dashboard:
     
     # Starts the coverage patrol by launching a ROS2 launch file with specified parameters; checks for existing patrol or manual goals
     def start_patrol(self):
-        if self.closing or self.patrol_stopping:
+        if self.closing or self.patrol_stopping or self.return_home_pending:
             return
         if self.patrol_active():
             self.feedback.config(text='Patrol already running. Stop it before restarting.')
             return
         with self.node.lock:
+            self.node.patrol_completed = False
             manual_busy = self.node.manual_goal is not None
         if manual_busy:
             self.feedback.config(text='Cancel the active Parrot manual goal before starting patrol.')
@@ -1035,6 +1050,49 @@ class Dashboard:
                     self.patrol_process = None
                     self.patrol_status = 'STOPPED'
                 self.patrol_stopping = False
+
+    def stop_patrol_and_return(self):
+        """Stop patrol first; never overlap patrol and return-home cmd_vel publishers."""
+        if self.closing or self.return_home_pending or not self.patrol_active():
+            return
+        self.return_home_pending = True
+        self.return_home_reason = 'Patrol stopped by operator'
+        self.return_home_deadline = time.monotonic() + 20.0
+        self.stop_patrol()
+        self.root.after(250, self._try_return_home)
+
+    def _try_return_home(self):
+        """Runs on Tk's thread, with bounded wait for exclusive cmd_vel ownership."""
+        if self.closing or not self.return_home_pending:
+            return
+        if time.monotonic() > self.return_home_deadline:
+            self.return_home_pending = False
+            self.feedback.config(text='Return home NOT started: patrol/controller did not release cmd_vel in time.')
+            return
+        if self.patrol_stopping or self.patrol_active():
+            self.root.after(250, self._try_return_home)
+            return
+        owners = self.node.get_publishers_info_by_topic('/parrot1/cmd_vel')
+        if owners:
+            self.root.after(250, self._try_return_home)
+            return
+        # start_manual validates odometry freshness and creates its own cmd_vel publisher.
+        success = self.node.start_manual(0.0, 0.0, 2.0, 0.0)
+        self.return_home_pending = False
+        self.feedback.config(text=(
+            f'{self.return_home_reason}; returning to (0, 0, 2) m.' if success
+            else 'Return home NOT started: check Parrot odometry and navigation status.'
+        ))
+
+    def _on_patrol_completed(self):
+        """Handle explicit successful mission event on Tk thread."""
+        if self.closing or self.return_home_pending or not self.patrol_active():
+            return
+        self.return_home_pending = True
+        self.return_home_reason = 'Patrol mission completed'
+        self.return_home_deadline = time.monotonic() + 20.0
+        self.stop_patrol()
+        self.root.after(250, self._try_return_home)
 
     def stop_patrol(self, wait=False):
         with self.patrol_lock:
@@ -1201,6 +1259,12 @@ class Dashboard:
             vegetation_status = 'Detector: receiving RGB-D classification labels'
         self.vegetation_status_label.config(text=vegetation_status)
 
+        with self.node.lock:
+            completed = self.node.patrol_completed
+            self.node.patrol_completed = False
+        if completed:
+            self._on_patrol_completed()
+
         with self.patrol_lock:
             proc = self.patrol_process
             if proc is not None and proc.poll() is not None and not self.patrol_stopping:
@@ -1219,6 +1283,7 @@ class Dashboard:
         if self.closing:
             return
         self.closing = True
+        self.return_home_pending = False
         self.patrol_start_button.config(state='disabled')
         self.patrol_stop_button.config(state='disabled')
         self.node.stop_manual('GUI closing')
