@@ -27,6 +27,19 @@ def generate_launch_description():
         }.items(),
     )
 
+    # 2d mapping launch file
+    # mapping_2d = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([
+    #             pkg, 'launch', 'camera_2d_mapping.launch.py'
+    #         ])
+    #     ),
+    #     launch_arguments={
+    #         'use_sim_time': 'true',
+    #         'start_camera_info_bridge': 'true',
+    #     }.items(),
+    # )
+
     reconstruction = ExecuteProcess(
         cmd=[
             'python3',
@@ -42,6 +55,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('altitude', default_value='10.0'),
         DeclareLaunchArgument('repeat', default_value='false'),
+        mapping_2d,
         reconstruction,
         patrol,
     ])
