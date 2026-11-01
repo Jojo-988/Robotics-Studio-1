@@ -42,6 +42,9 @@ CONFIG = {
         'action': '/parrot1/navigate_to_pose', 'frame': 'parrot1_map',
     },
 }
+# Confirm this topic against docs/CAMERA_GUI_HANDOFF.md or ros2 topic list -t.
+BIRD_MAP_IMAGE_TOPIC = '/parrot1/camera_bird_map/image'
+
 WARNING_DISTANCE = 2.0
 CRITICAL_DISTANCE = 0.8
 
@@ -186,6 +189,14 @@ class BridgeNode(Node):
 
         self.reset_map_client = self.create_client(Trigger,'/camera_bird_mapper/reset_map')
 
+        # Subscribe to the live RGBA bird's-eye mosaic.
+        self.bird_map_frame = None
+        self.bird_map_last_wall = None
+        self.bird_map_service_status = '2D map: waiting for mapper'
+        self.bird_map_sub = self.create_subscription(
+            Image, BIRD_MAP_IMAGE_TOPIC, self.on_bird_map, qos_profile_sensor_data
+        )
+
         # self.rover_goal = None
         # self.rover_started = None
         # self.rover_pose = None
@@ -211,10 +222,28 @@ class BridgeNode(Node):
             with self.lock:
                 self.patrol_completed = True
     
+    # Camera mapper callback (ROS thread); Tk widgets update only on the Tk thread.
+    def on_bird_map(self, msg):
+        try:
+            rgba = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgba8')
+            rgba = cv2.resize(rgba, (480, 270), interpolation=cv2.INTER_NEAREST)
+            # Composite transparent/unmapped pixels onto the same dark GUI background.
+            alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
+            background = np.array([10, 16, 24], dtype=np.float32)  # RGB #0a1018
+            rgb = (rgba[:, :, :3].astype(np.float32) * alpha +
+                   background * (1.0 - alpha)).astype(np.uint8)
+            with self.lock:
+                self.bird_map_frame = rgb
+                self.bird_map_last_wall = time.monotonic()
+        except Exception as exc:
+            self.get_logger().warning(f'2D map image conversion failed: {exc}')
+
     # 2D mapping service calls for saving and resetting the map;
     def save_2d_map(self):
         if not self.save_map_client.service_is_ready():
             self.get_logger().warning('Save Map service unavailable')
+            with self.lock:
+                self.bird_map_service_status = 'SAVE MAP: service unavailable'
             return False
 
         future = self.save_map_client.call_async(Trigger.Request())
@@ -226,6 +255,8 @@ class BridgeNode(Node):
     def reset_2d_map(self):
         if not self.reset_map_client.service_is_ready():
             self.get_logger().warning('Reset Map service unavailable')
+            with self.lock:
+                self.bird_map_service_status = 'RESET MAP: service unavailable'
             return False
 
         future = self.reset_map_client.call_async(Trigger.Request())
@@ -238,12 +269,16 @@ class BridgeNode(Node):
     def on_map_service_response(self, future, action):
         try:
             response = future.result()
+            with self.lock:
+                self.bird_map_service_status = f'{action}: {response.message}' if response.success else f'{action} FAILED: {response.message}'
             self.get_logger().info(
                 f'{action}: success={response.success}, '
                 f'message={response.message}'
             )
         except Exception as exc:
             self.get_logger().error(f'{action} failed: {exc}')
+            with self.lock:
+                self.bird_map_service_status = f'{action} ERROR: {exc}'
             
     def on_mesh_exported(self, msg):
         # Called from the ROS worker thread; Tkinter handles validation/display.
@@ -799,6 +834,9 @@ class Dashboard:
         tk.Button(map_controls, text='RESET MAP', bg='#b72d32', fg='white',
                 command=self.node.reset_2d_map).pack(side='left', padx=7)
 
+        self.bird_map_status_label = self.label(map_panel, '2D map: waiting for mapper', wrap=480)
+        self.bird_map_status_label.pack(pady=(0, 8))
+
         # RGB-D classification labels from the teammate's detector.
         vegetation_panel = tk.LabelFrame(
             body, text='VEGETATION - LABELS (RGB-D)',
@@ -894,7 +932,7 @@ class Dashboard:
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
 
-
+    # Checks if the triangle mesh file is ready and valid; returns True if ready, False otherwise, with status reason.
     def check_mesh_ready(self):
         """Validate a fresh, stable triangle mesh; safe to call repeatedly."""
         try:
@@ -1293,6 +1331,9 @@ class Dashboard:
             last_times = dict(self.node.last_sensor_time)
             vegetation_frame = self.node.vegetation_labels_frame
             vegetation_last_wall = self.node.vegetation_last_wall
+            bird_map_frame = self.node.bird_map_frame
+            bird_map_last_wall = self.node.bird_map_last_wall
+            bird_map_service_status = self.node.bird_map_service_status
         now = self.node.get_clock().now().nanoseconds / 1e9
         for robot in CONFIG:
             if frames[robot] is not None:
@@ -1315,6 +1356,19 @@ class Dashboard:
                 self.obstacle_labels[robot].config(text=f'Obstacle: {level} | {info}', fg=color)
             self.status_labels[robot].config(text='Navigation: ' + statuses[robot])
             self.ready_labels[robot].config(text='Interface: ' + self.node.readiness(robot))
+        # Render the bird's-eye mosaic beside the live camera.
+        if bird_map_frame is not None:
+            bird_map_photo = ImageTk.PhotoImage(PILImage.fromarray(bird_map_frame))
+            self.photos['bird_map'] = bird_map_photo  # prevent Tk image GC
+            self.bird_map_label.config(image=bird_map_photo, text='', width=480, height=270)
+        if bird_map_last_wall is None:
+            stream_status = f'Waiting for {BIRD_MAP_IMAGE_TOPIC}'
+        elif time.monotonic() - bird_map_last_wall > 2.0:
+            stream_status = '2D map stream stale'
+        else:
+            stream_status = '2D map stream receiving'
+        self.bird_map_status_label.config(text=f'{stream_status} | {bird_map_service_status}')
+
         # Draw classification image in Tkinter's main thread.
         if vegetation_frame is not None:
             vegetation_photo = ImageTk.PhotoImage(

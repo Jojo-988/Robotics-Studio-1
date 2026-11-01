@@ -42,7 +42,8 @@ def generate_launch_description():
             'nav2': 'false',
             'rviz': 'false',
             'world': 'large_demo',
-            'parrot_camera_pitch': '1.2217304764',
+            'parrot_camera_pitch': '1.5707963268',
+            # 'parrot_camera_pitch': '1.2217304764',
         }.items()
     )
 
