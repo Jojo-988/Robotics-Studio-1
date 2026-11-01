@@ -180,7 +180,11 @@ class BridgeNode(Node):
         self.patrol_completed = False
         self.create_subscription(Bool, '/parrot1/coverage_patrol/completed',
                                  self.on_patrol_completed, 10)
+        
+        # 2D Camera Bird Mapper services
+        self.save_map_client = self.create_client(Trigger, '/camera_bird_mapper/save_map')
 
+        self.reset_map_client = self.create_client(Trigger,'/camera_bird_mapper/reset_map')
 
         # self.rover_goal = None
         # self.rover_started = None
@@ -201,12 +205,46 @@ class BridgeNode(Node):
                 lambda msg, r=robot: self.on_odom(r, msg), qos_profile_sensor_data)
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
-
+        
     def on_patrol_completed(self, msg):
         if msg.data:
             with self.lock:
                 self.patrol_completed = True
+    
+    # 2D mapping service calls for saving and resetting the map;
+    def save_2d_map(self):
+        if not self.save_map_client.service_is_ready():
+            self.get_logger().warning('Save Map service unavailable')
+            return False
 
+        future = self.save_map_client.call_async(Trigger.Request())
+        future.add_done_callback(
+            lambda f: self.on_map_service_response(f, 'SAVE MAP')
+        )
+        return True
+
+    def reset_2d_map(self):
+        if not self.reset_map_client.service_is_ready():
+            self.get_logger().warning('Reset Map service unavailable')
+            return False
+
+        future = self.reset_map_client.call_async(Trigger.Request())
+        future.add_done_callback(
+            lambda f: self.on_map_service_response(f, 'RESET MAP')
+        )
+        return True
+
+    # Callback for the response from the 2D mapping services; logs success or failure messages.
+    def on_map_service_response(self, future, action):
+        try:
+            response = future.result()
+            self.get_logger().info(
+                f'{action}: success={response.success}, '
+                f'message={response.message}'
+            )
+        except Exception as exc:
+            self.get_logger().error(f'{action} failed: {exc}')
+            
     def on_mesh_exported(self, msg):
         # Called from the ROS worker thread; Tkinter handles validation/display.
         with self.lock:
@@ -665,8 +703,8 @@ class Dashboard:
     def __init__(self, root, node):
         self.root, self.node = root, node
         root.title('Forest Monitoring Control Station')
-        root.geometry('1200x920')
-        root.minsize(980, 650)
+        root.geometry('1200x1100')
+        root.minsize(1200, 1100)
         root.configure(bg=self.BG)
         self.photos = {}
         self.camera_labels = {}
@@ -676,12 +714,14 @@ class Dashboard:
         self.status_labels = {}
         self.ready_labels = {}
         self.inputs = {}
+        # patrol process and threading locks for managing the coverage patrol
         self.patrol_process = None
         self.patrol_lock = threading.RLock()
         self.patrol_status = 'IDLE'
         self.patrol_stopping = False
         self.patrol_shutdown_thread = None
         self.closing = False
+        # Return Home state management
         self.return_home_pending = False
         self.return_home_deadline = None
         self.return_home_reason = None
@@ -705,6 +745,7 @@ class Dashboard:
         self.mesh_check_after = 0.0
         self.mesh_status_reason = 'Waiting for new mesh export'
 
+        # GUI layout with scrollable canvas to accommodate dynamic content
         outer = tk.Frame(root, bg=self.BG)
         outer.pack(fill='both', expand=True)
         canvas = tk.Canvas(outer, bg=self.BG, highlightthickness=0)
@@ -729,7 +770,7 @@ class Dashboard:
             pane.pack(side='left', fill='both', expand=True, padx=6)
             self.label(pane, cfg['name'].upper() + ' CAMERA', bold=True).pack(pady=3)
             view = tk.Label(pane, text='Waiting for camera...', bg='#0a1018', fg=self.FG,
-                            width=60, height=15)
+                            width=60, height=16)
             view.pack()
             self.camera_labels[robot] = view
             self.detect_labels[robot] = self.label(pane, 'Detection: waiting...', wrap=490)
@@ -738,6 +779,25 @@ class Dashboard:
             self.position_labels[robot].pack(pady=3)
             self.obstacle_labels[robot] = self.label(pane, 'Obstacle: waiting for LiDAR...', bold=True)
             self.obstacle_labels[robot].pack(pady=4)
+        
+        # 2D Map Display Panel
+        map_panel = tk.LabelFrame(cameras, text='2D CAMERA BIRD MAP', bg=self.BG, fg=self.FG,
+                                font=('Arial', 11, 'bold'))
+        map_panel.pack(side='left', fill='both', expand=True, padx=6)
+
+        self.bird_map_label = tk.Label(map_panel, text='Waiting for 2D map...', bg='#0a1018', fg=self.FG,
+                                    width=60,height=18)
+        self.bird_map_label.pack(pady=8)
+
+        # 2D Mapping controls
+        map_controls = tk.Frame(map_panel, bg=self.BG)
+        map_controls.pack(pady=8)
+
+        tk.Button(map_controls, text='SAVE MAP',bg='#238c55', fg='white', 
+                    command=self.node.save_2d_map).pack(side='left', padx=7)
+
+        tk.Button(map_controls, text='RESET MAP', bg='#b72d32', fg='white',
+                command=self.node.reset_2d_map).pack(side='left', padx=7)
 
         # RGB-D classification labels from the teammate's detector.
         vegetation_panel = tk.LabelFrame(
@@ -785,42 +845,55 @@ class Dashboard:
             self.status_labels[robot] = self.label(frame, 'Waiting for navigation...', wrap=1050)
             self.status_labels[robot].grid(row=4, column=0, columnspan=len(names)+2, sticky='w', padx=6, pady=4)
         
+
+        # Main frame for Patrol and 3D Mapping
+        control_frame = tk.Frame(body, bg=self.BG)
+        control_frame.pack(fill='x', padx=12, pady=8)
+
         # Create the Parrot autonomous coverage patrol section
-        patrol = tk.LabelFrame(body, text='PARROT AUTONOMOUS COVERAGE PATROL',
+        patrol = tk.LabelFrame(control_frame, text='PARROT AUTONOMOUS COVERAGE PATROL',
                                bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
-        patrol.pack(fill='x', padx=20, pady=8)
+        patrol.pack(side='left', fill='both', expand=True, padx=6)
+
+        # Patrol controls panel
         self.label(patrol, 'Altitude (m)').grid(row=0, column=0, padx=8, pady=8)
         self.patrol_altitude = ttk.Entry(patrol, width=10)
-        self.patrol_altitude.insert(0, '8.0')
+        self.patrol_altitude.insert(0, '10.0')
         self.patrol_altitude.grid(row=0, column=1, padx=5)
         self.patrol_repeat = tk.BooleanVar(value=False)
         tk.Checkbutton(patrol, text='Repeat patrol', variable=self.patrol_repeat,
                        bg=self.BG, fg=self.FG, selectcolor=self.BG,
                        activebackground=self.BG, activeforeground=self.FG).grid(row=0, column=2, padx=8)
+
         self.patrol_start_button = tk.Button(patrol, text='START PATROL', bg='#238c55',
                                              fg='white', command=self.start_patrol)
-        self.patrol_start_button.grid(row=0, column=3, padx=8)
+        self.patrol_start_button.grid(row=1, column=0, padx=8, pady=8)
+
         self.patrol_stop_button = tk.Button(patrol, text='STOP PATROL', bg='#b72d32',
                                             fg='white', command=self.stop_patrol_and_return)
-        self.patrol_stop_button.grid(row=0, column=4, padx=8)
-        self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=1050)
-        self.patrol_label.grid(row=1, column=0, columnspan=5, sticky='w', padx=8, pady=6)
+        self.patrol_stop_button.grid(row=1, column=1, padx=8, pady=8)
+
+        self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=450)
+        self.patrol_label.grid(row=2, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
         # Independent mapping status section; no duplicate patrol controls.
-        mapping = tk.LabelFrame(body, text='PARROT SCANNING & 3D MAPPING',
+        mapping = tk.LabelFrame(control_frame, text='PARROT SCANNING & 3D MAPPING',
                                 bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
-        mapping.pack(fill='x', padx=20, pady=8)
+        mapping.pack(side='left', fill='both', expand=True, padx=6)
+
         self.map_label = self.label(mapping, '3D MAP: NOT READY', bold=True)
         self.map_label.pack(anchor='w', padx=8, pady=(10, 4))
-        self.map_detail_label = self.label(mapping, 'Waiting for new mesh export', wrap=1050)
+        self.map_detail_label = self.label(mapping, 'Waiting for new mesh export', wrap=450)
         self.map_detail_label.pack(anchor='w', padx=8, pady=(0, 4))
         self.open_map_button = tk.Button(mapping, text='OPEN 3D MAP',
                                          bg='#2475a8', fg='white', command=self.open_3d_map)
         self.open_map_button.pack(anchor='w', padx=8, pady=(4, 10))
+
         self.feedback = self.label(body, 'Both robots use direct velocity control (nav2:=false). Stop patrol before manual Parrot flight.', wrap=1080)
         self.feedback.pack(pady=9)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.update()
+
 
     def check_mesh_ready(self):
         """Validate a fresh, stable triangle mesh; safe to call repeatedly."""
