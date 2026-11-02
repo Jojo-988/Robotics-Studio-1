@@ -23,14 +23,22 @@ class VegetationDetector(Node):
             'min_height': 1.0,
             'region_limit': 12.0,
             'dead_min_area': 120,
+            'dead_match_distance': 1.0,
+            'dead_confirm_frames': 5,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
         if int(self.get_parameter('dead_min_area').value) < 1:
             raise ValueError('dead_min_area must be positive')
+        if float(self.get_parameter('dead_match_distance').value) <= 0:
+            raise ValueError('dead_match_distance must be positive')
+        if int(self.get_parameter('dead_confirm_frames').value) < 1:
+            raise ValueError('dead_confirm_frames must be positive')
 
         self.bridge = CvBridge()
         self.first_frame = True
+        self.dead_tracks = {}
+        self.next_dead_id = 1
         self.min_height = float(
             self.get_parameter('min_height').value
         )
@@ -99,6 +107,112 @@ class VegetationDetector(Node):
             '/parrot1/vegetation/dead_preview',
             10
         )
+    def update_dead_tracks(self, boxes):
+        radius = float(self.get_parameter('dead_match_distance').value)
+        required = int(self.get_parameter('dead_confirm_frames').value)
+
+        observations = [(box[4], box[5]) for box in boxes]
+        assignments = [None] * len(observations)
+
+        # Match nearby observations and stored targets one-to-one.
+        pairs = []
+        for index, (x, y) in enumerate(observations):
+            for track_id, track in self.dead_tracks.items():
+                distance2 = (
+                    (x - track['x'])**2
+                    + (y - track['y'])**2
+                )
+                if distance2 <= radius**2:
+                    pairs.append((distance2, index, track_id))
+
+        used_tracks = set()
+
+        for _, index, track_id in sorted(pairs):
+            if assignments[index] is not None:
+                continue
+            if track_id in used_tracks:
+                continue
+
+            assignments[index] = track_id
+            used_tracks.add(track_id)
+
+            track = self.dead_tracks[track_id]
+            x, y = observations[index]
+
+            # Smooth small position fluctuations.
+            track['x'] = 0.8 * track['x'] + 0.2 * x
+            track['y'] = 0.8 * track['y'] + 0.2 * y
+            track['hits'] += 1
+            track['misses'] = 0
+
+        for track_id in list(self.dead_tracks):
+            if track_id in used_tracks:
+                continue
+
+            track = self.dead_tracks[track_id]
+            track['hits'] = 0
+            track['misses'] += 1
+
+            # Discard short-lived candidates, but retain confirmed ones.
+            if not track['confirmed'] and track['misses'] >= 3:
+                del self.dead_tracks[track_id]
+
+        for index, (x, y) in enumerate(observations):
+            if assignments[index] is not None:
+                continue
+
+            track_id = self.next_dead_id
+            self.next_dead_id += 1
+
+            self.dead_tracks[track_id] = {
+                'x': x,
+                'y': y,
+                'hits': 1,
+                'misses': 0,
+                'confirmed': False,
+            }
+            assignments[index] = track_id
+
+        for track in self.dead_tracks.values():
+            if track['hits'] >= required:
+                track['confirmed'] = True
+
+        total = sum(
+            track['confirmed']
+            for track in self.dead_tracks.values()
+        )
+
+        return assignments, total
+
+    @staticmethod
+    def assess_dead_count(total):
+        if total == 0:
+            return (
+                'No Mortality Detected',
+                'Continue monitoring',
+                (0, 200, 0),
+            )
+
+        if total < 5:
+            return (
+                'Low Mortality Concern',
+                'Record locations; monitor changes',
+                (0, 220, 220),
+            )
+
+        if total < 10:
+            return (
+                'Moderate Mortality Concern',
+                'Schedule on-site inspection',
+                (0, 165, 255),
+            )
+
+        return (
+            'High Mortality Concern',
+            'Prioritise on-site investigation',
+            (0, 0, 255),
+        )
+    
     def make_dead_preview(
         self, overlay, dead_mask, has_surfaces, points
     ):
@@ -139,12 +253,20 @@ class VegetationDetector(Node):
                 (x, y, w, h, float(world_x), float(world_y))
             )
 
-        # Frame-local numbering only; this is not object tracking.
         boxes.sort(key=lambda box: (box[0], box[1]))
 
-        for number, box in enumerate(boxes, start=1):
+        track_ids, total = self.update_dead_tracks(boxes)
+
+        for track_id, box in zip(track_ids, boxes):
             x, y, w, h, world_x, world_y = box
-            caption = f'D{number} ({world_x:.1f}, {world_y:.1f})'
+
+            confirmed = self.dead_tracks[track_id]['confirmed']
+            marker = '' if confirmed else '?'
+
+            caption = (
+                f'T{track_id}{marker} '
+                f'({world_x:.1f}, {world_y:.1f})'
+            )
             cv2.rectangle(
                 preview,
                 (x, y),
@@ -179,33 +301,63 @@ class VegetationDetector(Node):
 
         dead_count = len(boxes)
 
-        title = (
-            f'Dead candidates (current frame): {dead_count}'
-            if has_surfaces
-            else 'Dead candidates: N/A - no retained surfaces'
-        )
+        assessment, advice, status_colour = self.assess_dead_count(total)
 
-        for text, y in [
-            (title, 28),
-            ('Preliminary regions - not a survey total', 56),
-        ]:
+        # No usable retained surfaces: do not present a health conclusion.
+        if not has_surfaces:
+            current_text = 'Current dead candidates: N/A'
+            assessment = 'Cannot Assess Current View'
+            advice = 'Observe the vegetation from a suitable position'
+            status_colour = (180, 180, 180)
+
+        else:
+            current_text = f'Current dead candidates: {dead_count}'
+
+            # Avoid reporting zero mortality while candidates await confirmation.
+            if total == 0 and dead_count > 0:
+                assessment = 'Confirming Candidates'
+                advice = 'Keep the target in view'
+                status_colour = (0, 220, 220)
+
+        display_lines = [
+            (current_text, 27, (255, 255, 255)),
+            (
+                f'Confirmed candidates since start: {total}',
+                53,
+                (255, 255, 255),
+            ),
+            (
+                f'Preliminary: {assessment}',
+                79,
+                status_colour,
+            ),
+            (
+                f'Advice: {advice}',
+                105,
+                (255, 255, 255),
+            ),
+        ]
+
+        for text, y, colour in display_lines:
+            # Black outline for readability on the camera image.
             cv2.putText(
                 preview,
                 text,
                 (10, y),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
+                0.60,
                 (0, 0, 0),
                 4,
                 cv2.LINE_AA,
             )
+
             cv2.putText(
                 preview,
                 text,
                 (10, y),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (255, 255, 255),
+                0.60,
+                colour,
                 2,
                 cv2.LINE_AA,
             )
