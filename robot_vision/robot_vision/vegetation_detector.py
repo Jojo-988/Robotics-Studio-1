@@ -22,9 +22,12 @@ class VegetationDetector(Node):
             'odom_topic': '/parrot1/odometry',
             'min_height': 1.0,
             'region_limit': 12.0,
+            'dead_min_area': 120,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
+        if int(self.get_parameter('dead_min_area').value) < 1:
+            raise ValueError('dead_min_area must be positive')
 
         self.bridge = CvBridge()
         self.first_frame = True
@@ -53,7 +56,7 @@ class VegetationDetector(Node):
         self.classes = [
             ('HEALTHY', (30, 70, 25), (95, 255, 210), (0, 255, 0)),
             ('STRESSED', (25, 15, 60), (100, 110, 230), (0, 255, 255)),
-            ('DEAD', (0, 0, 100), (179, 45, 255), (0, 0, 255)),
+            ('DEAD', (0, 0, 15), (179, 45, 95), (0, 0, 255)),
         ]
 
         self.rgb_sub = message_filters.Subscriber(
@@ -88,9 +91,105 @@ class VegetationDetector(Node):
         # Publish the vegetation labels as an image topic for GUI display
         self.labels_pub = self.create_publisher(
             Image,
-            '/parrot1/vegetation/labels',
+            '/parrot1/vegetation/dead_preview',
             10
         )
+        self.dead_preview_pub = self.create_publisher(
+            Image,
+            '/parrot1/vegetation/dead_preview',
+            10
+        )
+    def make_dead_preview(self, overlay, dead_mask, has_surfaces):
+        """Preview connected DEAD regions in this frame only."""
+        preview = overlay.copy()
+        binary = dead_mask.astype(np.uint8) * 255
+        min_area = int(self.get_parameter('dead_min_area').value)
+
+        count, _, stats, _ = cv2.connectedComponentsWithStats(
+            binary, connectivity=8
+        )
+
+        boxes = []
+        for component in range(1, count):
+            x, y, w, h, area = [
+                int(value) for value in stats[component]
+            ]
+
+            if area < min_area or w < 8 or h < 8:
+                continue
+
+            boxes.append((x, y, w, h))
+
+        # Frame-local numbering only; this is not object tracking.
+        boxes.sort(key=lambda box: (box[0], box[1]))
+
+        for number, (x, y, w, h) in enumerate(boxes, start=1):
+            cv2.rectangle(
+                preview,
+                (x, y),
+                (x + w - 1, y + h - 1),
+                (0, 255, 255),
+                2,
+            )
+
+            text_y = max(18, y - 6)
+
+            # Black outline keeps the text readable.
+            cv2.putText(
+                preview,
+                f'D{number}',
+                (x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (0, 0, 0),
+                4,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                preview,
+                f'D{number}',
+                (x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (0, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+        dead_count = len(boxes)
+
+        title = (
+            f'Dead candidates (current frame): {dead_count}'
+            if has_surfaces
+            else 'Dead candidates: N/A - no retained surfaces'
+        )
+
+        for text, y in [
+            (title, 28),
+            ('Preliminary regions - not a survey total', 56),
+        ]:
+            cv2.putText(
+                preview,
+                text,
+                (10, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (0, 0, 0),
+                4,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                preview,
+                text,
+                (10, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+        return preview, dead_count
 
     @staticmethod
     def rotation_matrix(q):
@@ -214,13 +313,23 @@ class VegetationDetector(Node):
                 + 0.55 * np.array((255, 0, 255), dtype=np.float32)
             ).astype(np.uint8)
 
+            # Class order: HEALTHY, STRESSED, DEAD.
+            # Use only pixels classified exclusively as DEAD.
+            dead_mask = exclusive[2]
+
+            dead_preview, dead_count = self.make_dead_preview(
+                overlay,
+                dead_mask,
+                bool(kept.any()),
+            )
+
             panel = np.zeros((125, 720, 3), dtype=np.uint8)
             lines = [
                 f'Image-time pose: X={position[0]:.2f} '
                 f'Y={position[1]:.2f} Z={position[2]:.2f} m',
                 f'Height > {self.min_height:.1f} m | '
                 f'Region +/-{self.region_limit:.1f} m',
-                'Colour candidates only - no tree count or health score',
+                f'Dead candidates in current frame: {dead_count} (not total)',
                 'Green=Healthy Yellow=Stressed Red=Dead',
                 'Magenta=Ambiguous Grey=Unclassified Black=Excluded',
             ]
@@ -255,6 +364,13 @@ class VegetationDetector(Node):
             )
             labels_msg.header = rgb_msg.header
             self.labels_pub.publish(labels_msg)
+
+            preview_msg = self.bridge.cv2_to_imgmsg(
+                dead_preview,
+                encoding='bgr8',
+            )
+            preview_msg.header = rgb_msg.header
+            self.dead_preview_pub.publish(preview_msg)
 
         except Exception as error:
             self.get_logger().error(

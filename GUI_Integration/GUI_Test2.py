@@ -155,7 +155,7 @@ class BridgeNode(Node):
 
         self.vegetation_labels_sub = self.create_subscription(
             Image,
-            '/parrot1/vegetation/labels',
+            '/parrot1/vegetation/dead_preview',
             self.on_vegetation_labels,
             qos_profile_sensor_data
         )
@@ -839,7 +839,7 @@ class Dashboard:
 
         # RGB-D classification labels from the teammate's detector.
         vegetation_panel = tk.LabelFrame(
-            body, text='VEGETATION - LABELS (RGB-D)',
+            body, text='VEGETATION - DEAD CANDIDATES',
             bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold')
         )
         vegetation_panel.pack(fill='x', padx=20, pady=8)
@@ -1379,11 +1379,11 @@ class Dashboard:
                 image=vegetation_photo, text='', width=480, height=270
             )
         if vegetation_last_wall is None:
-            vegetation_status = 'Detector: waiting for /parrot1/vegetation/labels'
+            vegetation_status = 'Detector: waiting for /parrot1/vegetation/dead_preview'
         elif time.monotonic() - vegetation_last_wall > 2.0:
             vegetation_status = 'Detector: labels stream stale (no recent images)'
         else:
-            vegetation_status = 'Detector: receiving RGB-D classification labels'
+            vegetation_status = 'Detector: receiving dead-candidate preview'
         self.vegetation_status_label.config(text=vegetation_status)
 
         with self.node.lock:
