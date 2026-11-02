@@ -91,7 +91,7 @@ class VegetationDetector(Node):
         # Publish the vegetation labels as an image topic for GUI display
         self.labels_pub = self.create_publisher(
             Image,
-            '/parrot1/vegetation/dead_preview',
+            '/parrot1/vegetation/labels',
             10
         )
         self.dead_preview_pub = self.create_publisher(
@@ -99,14 +99,16 @@ class VegetationDetector(Node):
             '/parrot1/vegetation/dead_preview',
             10
         )
-    def make_dead_preview(self, overlay, dead_mask, has_surfaces):
+    def make_dead_preview(
+        self, overlay, dead_mask, has_surfaces, points
+    ):
         """Preview connected DEAD regions in this frame only."""
         preview = overlay.copy()
         binary = dead_mask.astype(np.uint8) * 255
         min_area = int(self.get_parameter('dead_min_area').value)
 
-        count, _, stats, _ = cv2.connectedComponentsWithStats(
-            binary, connectivity=8
+        count, component_labels, stats, _ = (
+            cv2.connectedComponentsWithStats(binary, connectivity=8)
         )
 
         boxes = []
@@ -118,12 +120,31 @@ class VegetationDetector(Node):
             if area < min_area or w < 8 or h < 8:
                 continue
 
-            boxes.append((x, y, w, h))
+            # Use the actual DEAD pixels belonging to this component.
+            selected = component_labels == component
+            region_points = points[selected]
+
+            valid_points = region_points[
+                np.all(np.isfinite(region_points), axis=1)
+            ]
+            if len(valid_points) == 0:
+                continue
+
+            # Median position reduces the effect of isolated depth errors.
+            world_x, world_y = np.median(
+                valid_points[:, :2], axis=0
+            )
+
+            boxes.append(
+                (x, y, w, h, float(world_x), float(world_y))
+            )
 
         # Frame-local numbering only; this is not object tracking.
         boxes.sort(key=lambda box: (box[0], box[1]))
 
-        for number, (x, y, w, h) in enumerate(boxes, start=1):
+        for number, box in enumerate(boxes, start=1):
+            x, y, w, h, world_x, world_y = box
+            caption = f'D{number} ({world_x:.1f}, {world_y:.1f})'
             cv2.rectangle(
                 preview,
                 (x, y),
@@ -137,7 +158,7 @@ class VegetationDetector(Node):
             # Black outline keeps the text readable.
             cv2.putText(
                 preview,
-                f'D{number}',
+                caption,
                 (x, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
@@ -147,7 +168,7 @@ class VegetationDetector(Node):
             )
             cv2.putText(
                 preview,
-                f'D{number}',
+                caption,
                 (x, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
@@ -321,6 +342,7 @@ class VegetationDetector(Node):
                 overlay,
                 dead_mask,
                 bool(kept.any()),
+                points,
             )
 
             panel = np.zeros((125, 720, 3), dtype=np.uint8)
