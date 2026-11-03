@@ -37,6 +37,12 @@ if(BUILD_TESTING)
   ament_add_pytest_test(camera_projection_tests test/test_camera_projection.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 
+  ament_add_pytest_test(camera_projection_canvas_tests test/test_camera_projection_canvas.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+
+  ament_add_pytest_test(motion_timeout_tests test/test_motion_timeout.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+
   ament_add_pytest_test(map_statistics_tests test/test_map_statistics.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -196,7 +196,9 @@ class CameraBirdMapper(Node):
                 }
                 tile, mask, metadata = project_rgb(decode_rgb(image), plain(info), pose,
                     {'header': plain(image.header), 'width': image.width, 'height': image.height},
-                    self.p['resolution'], self.p['ground_z'], self.p['exclude_bottom'])
+                    self.p['resolution'], self.p['ground_z'], self.p['exclude_bottom'],
+                    target_grid=(self.p['origin_x'], self.p['origin_y'],
+                                 self.p['width'], self.p['height']))
                 inside, self.last_outside = self.mosaic.add(tile, mask, metadata)
                 if inside == 0:
                     self.drops['outside_frames'] += 1
@@ -243,6 +245,8 @@ class CameraBirdMapper(Node):
             'frame_id': self.p['target_frame'], 'status': status,
             'width': self.p['width'], 'height': self.p['height'],
             'resolution_m_per_pixel': self.p['resolution'],
+            'projection_domain': 'fixed_canvas',
+            'outside_pixel_count_available': False,
             'origin_lower_left': {'x': self.p['origin_x'], 'y': self.p['origin_y'], 'yaw': 0.0},
             'image_axes': 'right=+X, up=+Y; row 0 has highest Y',
             'ground_z': self.p['ground_z'], 'exclude_bottom_fraction': self.p['exclude_bottom'],

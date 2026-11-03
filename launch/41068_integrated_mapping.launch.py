@@ -37,6 +37,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'true',
             'start_camera_info_bridge': 'true',
+            'params_file':LaunchConfiguration('camera_params_file'),
         }.items(),
     )
 
@@ -55,6 +56,13 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('altitude', default_value='10.0'),
         DeclareLaunchArgument('repeat', default_value='false'),
+        DeclareLaunchArgument(
+            'camera_params_file',
+            default_value=PathJoinSubstitution([
+                pkg, 'config', 'camera_mapping_height15.yaml'
+            ]),
+            description='Camera mapping configuration for the survey.',
+        ),
         mapping_2d,
         reconstruction,
         patrol,

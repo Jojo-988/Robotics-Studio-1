@@ -135,8 +135,14 @@ def self_test():
 
 
 def project_rgb(rgb, info, pose, meta, resolution=0.01, ground_z=0.0,
-                exclude_bottom=0.10, source_sample="live"):
-    """Return RGBA, binary mask and geometry metadata; no ROS or file writes."""
+                exclude_bottom=0.10, source_sample="live", *, target_grid=None):
+    """Return RGBA, binary mask and geometry metadata; no ROS/file writes.
+
+    target_grid=(origin_x, origin_y, width, height) limits live sampling to
+    that world-aligned grid. None preserves offline full-footprint output.
+    The full-image downward-ray requirement is retained in both modes.
+    An empty fixed-grid result is valid and must not erase mosaic history.
+    """
     args = SimpleNamespace(resolution=resolution, ground_z=ground_z,
                            exclude_bottom=exclude_bottom)
     require(np.isfinite(resolution) and resolution > 0, "Invalid resolution")
@@ -220,7 +226,7 @@ def project_rgb(rgb, info, pose, meta, resolution=0.01, ground_z=0.0,
     require(np.isfinite(center).all(), "Invalid camera position")
     require(center[2] > args.ground_z, "Camera must be above ground plane")
 
-    # Use full image edges to define a fixed canvas, even when rows are masked.
+    # Keep the full-image downward-ray check, including excluded source rows.
     corners_uv = np.array([
         [-0.5, -0.5], [width - 0.5, -0.5],
         [width - 0.5, height - 0.5], [-0.5, height - 0.5],
@@ -230,9 +236,21 @@ def project_rgb(rgb, info, pose, meta, resolution=0.01, ground_z=0.0,
     )
 
     resolution = args.resolution
-    lower = np.floor(corners[:, :2].min(axis=0) / resolution).astype(int)
-    upper = np.ceil(corners[:, :2].max(axis=0) / resolution).astype(int)
-    out_width, out_height = (upper - lower).tolist()
+    if target_grid is None:
+        lower = np.floor(corners[:, :2].min(axis=0) / resolution).astype(int)
+        upper = np.ceil(corners[:, :2].max(axis=0) / resolution).astype(int)
+        out_width, out_height = (upper - lower).tolist()
+    else:
+        # Fixed target grid: never allocate the full camera footprint first.
+        gx, gy, out_width, out_height = target_grid
+        require(all(isinstance(v, (int, np.integer)) and not isinstance(v, bool)
+                    for v in (out_width, out_height)), "Grid dimensions must be integers")
+        origin = np.asarray([gx, gy], dtype=float) / resolution
+        require(np.isfinite(origin).all(), "Invalid target origin")
+        require(np.allclose(origin, np.rint(origin), atol=1e-6, rtol=0),
+                "Target origin must align to resolution")
+        lower = np.rint(origin).astype(int)
+        upper = lower + [out_width, out_height]
     require(
         0 < out_width <= 4000 and 0 < out_height <= 4000
         and out_width * out_height <= 4_000_000,
@@ -262,7 +280,8 @@ def project_rgb(rgb, info, pose, meta, resolution=0.01, ground_z=0.0,
         & (u >= 0) & (u < width - 1)
         & (v >= 0) & (v < keep_rows - 1)
     )
-    require(valid.any(), "No valid output pixels")
+    if target_grid is None:
+        require(valid.any(), "No valid output pixels")
 
     u0 = np.floor(u[valid]).astype(int)
     v0 = np.floor(v[valid]).astype(int)
@@ -296,6 +315,7 @@ def project_rgb(rgb, info, pose, meta, resolution=0.01, ground_z=0.0,
     require(error < 1e-6, "Projection round-trip check failed")
 
     metadata = {
+        "projection_domain": "fixed_canvas" if target_grid is not None else "full_footprint",
         "schema_version": 1,
         "map_kind": "camera_single_frame_ground_plane_projection",
         "frame_id": pose["target_frame"],
