@@ -67,44 +67,48 @@ MANUAL_GOAL_TIMEOUT = 120.0
 
 
 # Image processing functions for fire and plant health detection
-def annotate_regions(frame, mask, name, color, minimum=800):
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    count = 0
-    for contour in contours:
-        if cv2.contourArea(contour) < minimum:
-            continue
-        x, y, w, h = cv2.boundingRect(contour)
-        if w < 20 or h < 20:
-            continue
-        count += 1
-        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(frame, name, (x, max(20, y - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX, .48, color, 2)
-    return count
+# def annotate_regions(frame, mask, name, color, minimum=800):
+#     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#     count = 0
+#     for contour in contours:
+#         if cv2.contourArea(contour) < minimum:
+#             continue
+#         x, y, w, h = cv2.boundingRect(contour)
+#         if w < 20 or h < 20:
+#             continue
+#         count += 1
+#         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+#         cv2.putText(frame, name, (x, max(20, y - 8)),
+#                     cv2.FONT_HERSHEY_SIMPLEX, .48, color, 2)
+#     return count
 
 # Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
 def process_frame(frame):
     frame = cv2.resize(frame, (480, 270))
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
     kernel = np.ones((5, 5), np.uint8)
-    classes = {
-        'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
-        'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
-        'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
-    }
-    counts = {}
-    for name, (lo, hi, color) in classes.items():
-        mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        counts[name] = annotate_regions(frame, mask, name.upper(), color)
+    # classes = {
+    #     'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
+    #     'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
+    #     'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
+    # }
+    # counts = {}
+    # for name, (lo, hi, color) in classes.items():
+    #     mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+    #     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    #     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    #     counts[name] = annotate_regions(frame, mask, name.upper(), color)
     fire_mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((170, 150, 150)), np.array((179, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((10, 120, 150)), np.array((35, 255, 255)))
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_OPEN, kernel)
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_CLOSE, kernel)
-    fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+    # fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
+    # Detect fire without drawing bounding boxes.
+    fire_contours, _ = cv2.findContours(fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    fire = any(cv2.contourArea(c) >= 300 for c in fire_contours)
+    # return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire}
 
 # ROS2 Node that bridges sensor data and navigation actions to the GUI
 class BridgeNode(Node):
@@ -1304,7 +1308,7 @@ class Dashboard:
 
             message = (
                 'Parrot detected a possible fire!\n\n'
-                f'Approximate ground waypoint ({frame_id}):\n'
+                f'Approximate ground waypoint:\n'
                 f'X: {x:.2f} m\n'
                 f'Y: {y:.2f} m\n'
                 f'Z: {z:.2f} m \n\n'
@@ -1345,8 +1349,9 @@ class Dashboard:
                 self.position_labels[robot].config(text=f'Position: X={x:.2f}, Y={y:.2f}, Z={z:.2f} m')
             if detections[robot] is not None:
                 d = detections[robot]
-                self.detect_labels[robot].config(text=f"Fire: {'DETECTED' if d['fire'] else 'not detected'} | "
-                    f"Healthy: {d['Healthy']} | Stressed: {d['Stressed']} | Dead: {d['Dead']}")
+                # self.detect_labels[robot].config(text=f"Fire: {'DETECTED' if d['fire'] else 'not detected'} | "
+                #     f"Healthy: {d['Healthy']} | Stressed: {d['Stressed']} | Dead: {d['Dead']}")
+                self.detect_labels[robot].config(text=f"Fire: {'DETECTED' if d['fire'] else 'not detected'}")
             if obstacles[robot] is not None:
                 level, dist = obstacles[robot]
                 if last_times[robot] is not None and now - last_times[robot] > 2.0:
