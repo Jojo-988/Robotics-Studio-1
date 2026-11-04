@@ -83,32 +83,49 @@ MANUAL_GOAL_TIMEOUT = 120.0
 #                     cv2.FONT_HERSHEY_SIMPLEX, .48, color, 2)
 #     return count
 
+# # Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
+# def process_frame(frame):
+#     frame = cv2.resize(frame, (480, 270))
+#     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
+#     kernel = np.ones((5, 5), np.uint8)
+#     # classes = {
+#     #     'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
+#     #     'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
+#     #     'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
+#     # }
+#     # counts = {}
+#     # for name, (lo, hi, color) in classes.items():
+#     #     mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+#     #     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+#     #     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+#     #     counts[name] = annotate_regions(frame, mask, name.upper(), color)
+#     fire_mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
+#     fire_mask |= cv2.inRange(hsv, np.array((170, 150, 150)), np.array((179, 255, 255)))
+#     fire_mask |= cv2.inRange(hsv, np.array((10, 120, 150)), np.array((35, 255, 255)))
+#     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_OPEN, kernel)
+#     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_CLOSE, kernel)
+#     # fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
+#     # Detect fire without drawing bounding boxes.
+#     fire_contours, _ = cv2.findContours(fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#     fire = any(cv2.contourArea(c) >= 300 for c in fire_contours)
+#     # return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+#     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire}
+
 # Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
 def process_frame(frame):
     frame = cv2.resize(frame, (480, 270))
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
     kernel = np.ones((5, 5), np.uint8)
-    # classes = {
-    #     'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
-    #     'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
-    #     'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
-    # }
-    # counts = {}
-    # for name, (lo, hi, color) in classes.items():
-    #     mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
-    #     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    #     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    #     counts[name] = annotate_regions(frame, mask, name.upper(), color)
+    
     fire_mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((170, 150, 150)), np.array((179, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((10, 120, 150)), np.array((35, 255, 255)))
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_OPEN, kernel)
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_CLOSE, kernel)
-    # fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
-    # Detect fire without drawing bounding boxes.
+
     fire_contours, _ = cv2.findContours(fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     fire = any(cv2.contourArea(c) >= 300 for c in fire_contours)
-    # return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire}
 
 # ROS2 Node that bridges sensor data and navigation actions to the GUI
@@ -146,7 +163,7 @@ class BridgeNode(Node):
         self.fire_detected = False
         self.pending_fire_alert = False
         self.fire_alert_last_time = -float('inf')
-        self.fire_alert_cooldown = 30.0  # seconds; suppress repeated popups
+        self.fire_alert_cooldown = 15.0  # seconds; suppress repeated popups
 
         # Fire location is set when a fire is detected and cleared when the user acknowledges the alert.
         self.fire_location = None
@@ -236,6 +253,8 @@ class BridgeNode(Node):
         """Accept progress from the optional ROS topic."""
         self.parse_patrol_progress(msg.data)
 
+    # Parse patrol progress from either ROS messages or launch logs; updates the internal state.
+    # send the information into the GUI for display. parse helps to organise the output and value from the subscriber topic
     def parse_patrol_progress(self, report):
         """Accept actual progress from either ROS messages or patrol launch logs."""
         report = report.strip()
@@ -258,6 +277,8 @@ class BridgeNode(Node):
                 self.patrol_completed = True
     
     # Camera mapper callback (ROS thread); Tk widgets update only on the Tk thread.
+    # The RGBA image is composited onto a dark background to avoid showing unmapped pixels as white.
+    # convert the RGBA image to a format suitable for display in the GUI, resizing it to fit the GUI layout.
     def on_bird_map(self, msg):
         try:
             rgba = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgba8')
@@ -360,7 +381,7 @@ class BridgeNode(Node):
                 f'Vegetation labels error: {exc}'
             )
 
-
+    # Callback for manual odometry messages; updates the drone's position and orientation for manual control.
     def on_manual_odometry(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
@@ -437,9 +458,13 @@ class BridgeNode(Node):
         if math.hypot(ex, ey) < MANUAL_POSITION_TOL and abs(ez) < MANUAL_POSITION_TOL and abs(e_yaw) < MANUAL_YAW_TOL:
             self.stop_manual('Manual goal reached')
             return
+
         # Odometry position is in world/odom coordinates; Twist linear X/Y is body-frame.
         vx_world = self.limit(0.7 * ex, MANUAL_MAX_XY)
         vy_world = self.limit(0.7 * ey, MANUAL_MAX_XY)
+
+
+        # Controls vertical and yaw motion directly in world coordinates; linear Z is body-frame.
         cmd = Twist()
         cmd.linear.x = self.limit(math.cos(yaw) * vx_world + math.sin(yaw) * vy_world, MANUAL_MAX_XY)
         cmd.linear.y = self.limit(-math.sin(yaw) * vx_world + math.cos(yaw) * vy_world, MANUAL_MAX_XY)
