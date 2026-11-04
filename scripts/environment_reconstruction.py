@@ -151,7 +151,7 @@ class Environment_Reconstruction(Node):
             self.global_point_cloud = self.global_point_cloud.voxel_down_sample(0.04)
 
     def export_mesh_callback(self):
-        if (self.frame_count == 0 or self.is_meshing == True) and self.patrol_status == 'COMPLETE':
+        if (self.frame_count == 0 or self.is_meshing == True) or self.patrol_status != 'COMPLETE':
             return
 
         self.get_logger().info(
