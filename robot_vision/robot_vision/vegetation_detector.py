@@ -22,7 +22,7 @@ class VegetationDetector(Node):
             'odom_topic': '/parrot1/odometry',
             'min_height': 1.0,
             'region_limit': 12.0,
-            'dead_min_area': 120,
+            'dead_min_area': 500,
             'dead_match_distance': 1.0,
             'dead_confirm_frames': 5,
         }

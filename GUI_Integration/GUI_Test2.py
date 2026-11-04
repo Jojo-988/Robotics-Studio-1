@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import re
 import signal
 import subprocess
 import time
@@ -82,32 +83,49 @@ MANUAL_GOAL_TIMEOUT = 120.0
 #                     cv2.FONT_HERSHEY_SIMPLEX, .48, color, 2)
 #     return count
 
+# # Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
+# def process_frame(frame):
+#     frame = cv2.resize(frame, (480, 270))
+#     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
+#     kernel = np.ones((5, 5), np.uint8)
+#     # classes = {
+#     #     'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
+#     #     'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
+#     #     'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
+#     # }
+#     # counts = {}
+#     # for name, (lo, hi, color) in classes.items():
+#     #     mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
+#     #     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+#     #     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+#     #     counts[name] = annotate_regions(frame, mask, name.upper(), color)
+#     fire_mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
+#     fire_mask |= cv2.inRange(hsv, np.array((170, 150, 150)), np.array((179, 255, 255)))
+#     fire_mask |= cv2.inRange(hsv, np.array((10, 120, 150)), np.array((35, 255, 255)))
+#     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_OPEN, kernel)
+#     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_CLOSE, kernel)
+#     # fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
+#     # Detect fire without drawing bounding boxes.
+#     fire_contours, _ = cv2.findContours(fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#     fire = any(cv2.contourArea(c) >= 300 for c in fire_contours)
+#     # return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+#     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire}
+
 # Processes a single video frame to detect fire and classify plant health, returning the annotated frame and detection results.
 def process_frame(frame):
     frame = cv2.resize(frame, (480, 270))
     hsv = cv2.cvtColor(cv2.GaussianBlur(frame, (7, 7), 0), cv2.COLOR_BGR2HSV)
     kernel = np.ones((5, 5), np.uint8)
-    # classes = {
-    #     'Healthy': ((30, 70, 25), (95, 255, 210), (0, 255, 0)),
-    #     'Stressed': ((25, 15, 60), (100, 110, 230), (0, 255, 255)),
-    #     'Dead': ((0, 0, 100), (179, 45, 255), (0, 0, 255)),
-    # }
-    # counts = {}
-    # for name, (lo, hi, color) in classes.items():
-    #     mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
-    #     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    #     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    #     counts[name] = annotate_regions(frame, mask, name.upper(), color)
+    
     fire_mask = cv2.inRange(hsv, np.array((0, 150, 150)), np.array((10, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((170, 150, 150)), np.array((179, 255, 255)))
     fire_mask |= cv2.inRange(hsv, np.array((10, 120, 150)), np.array((35, 255, 255)))
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_OPEN, kernel)
     fire_mask = cv2.morphologyEx(fire_mask, cv2.MORPH_CLOSE, kernel)
-    # fire = annotate_regions(frame, fire_mask, 'FIRE', (0, 0, 255), 300) > 0
-    # Detect fire without drawing bounding boxes.
+
     fire_contours, _ = cv2.findContours(fire_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     fire = any(cv2.contourArea(c) >= 300 for c in fire_contours)
-    # return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire, **counts}
+
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), {'fire': fire}
 
 # ROS2 Node that bridges sensor data and navigation actions to the GUI
@@ -145,7 +163,7 @@ class BridgeNode(Node):
         self.fire_detected = False
         self.pending_fire_alert = False
         self.fire_alert_last_time = -float('inf')
-        self.fire_alert_cooldown = 30.0  # seconds; suppress repeated popups
+        self.fire_alert_cooldown = 15.0  # seconds; suppress repeated popups
 
         # Fire location is set when a fire is detected and cleared when the user acknowledges the alert.
         self.fire_location = None
@@ -182,6 +200,16 @@ class BridgeNode(Node):
         self.create_subscription(Odometry, '/parrot1/odometry',
                                  self.on_manual_odometry, qos_profile_sensor_data)
         self.manual_timer = self.create_timer(0.05, self.manual_control_tick)
+
+        # Optional live patrol progress feed. The patrol backend must publish
+        # std_msgs/String messages such as:
+        # "PATROL | pass 0 | waypoint 12/119 | coverage 34.5%"
+        self.patrol_progress = None
+        self.patrol_progress_wall = None
+        self.create_subscription(
+            String, '/parrot1/coverage_patrol/progress',
+            self.on_patrol_progress, 10
+        )
 
         # A true event must be emitted by the patrol node on successful completion.
         self.patrol_completed = False
@@ -221,12 +249,36 @@ class BridgeNode(Node):
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
         
+    def on_patrol_progress(self, msg):
+        """Accept progress from the optional ROS topic."""
+        self.parse_patrol_progress(msg.data)
+
+    # Parse patrol progress from either ROS messages or launch logs; updates the internal state.
+    # send the information into the GUI for display. parse helps to organise the output and value from the subscriber topic
+    def parse_patrol_progress(self, report):
+        """Accept actual progress from either ROS messages or patrol launch logs."""
+        report = report.strip()
+        waypoint = re.search(r'waypoint\s+(\d+)\s*/\s*(\d+)', report, re.I)
+        coverage = re.search(r'coverage\s+([\d.]+)\s*%', report, re.I)
+        patrol_pass = re.search(r'pass\s+(\d+)', report, re.I)
+        if not (waypoint or coverage or patrol_pass):
+            return
+        with self.lock:
+            self.patrol_progress = {
+                'pass': int(patrol_pass.group(1)) if patrol_pass else None,
+                'waypoint': (int(waypoint.group(1)), int(waypoint.group(2))) if waypoint else None,
+                'coverage': min(100.0, max(0.0, float(coverage.group(1)))) if coverage else None,
+            }
+            self.patrol_progress_wall = time.monotonic()
+
     def on_patrol_completed(self, msg):
         if msg.data:
             with self.lock:
                 self.patrol_completed = True
     
     # Camera mapper callback (ROS thread); Tk widgets update only on the Tk thread.
+    # The RGBA image is composited onto a dark background to avoid showing unmapped pixels as white.
+    # convert the RGBA image to a format suitable for display in the GUI, resizing it to fit the GUI layout.
     def on_bird_map(self, msg):
         try:
             rgba = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgba8')
@@ -329,7 +381,7 @@ class BridgeNode(Node):
                 f'Vegetation labels error: {exc}'
             )
 
-
+    # Callback for manual odometry messages; updates the drone's position and orientation for manual control.
     def on_manual_odometry(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
@@ -406,9 +458,13 @@ class BridgeNode(Node):
         if math.hypot(ex, ey) < MANUAL_POSITION_TOL and abs(ez) < MANUAL_POSITION_TOL and abs(e_yaw) < MANUAL_YAW_TOL:
             self.stop_manual('Manual goal reached')
             return
+
         # Odometry position is in world/odom coordinates; Twist linear X/Y is body-frame.
         vx_world = self.limit(0.7 * ex, MANUAL_MAX_XY)
         vy_world = self.limit(0.7 * ey, MANUAL_MAX_XY)
+
+
+        # Controls vertical and yaw motion directly in world coordinates; linear Z is body-frame.
         cmd = Twist()
         cmd.linear.x = self.limit(math.cos(yaw) * vx_world + math.sin(yaw) * vy_world, MANUAL_MAX_XY)
         cmd.linear.y = self.limit(-math.sin(yaw) * vx_world + math.cos(yaw) * vy_world, MANUAL_MAX_XY)
@@ -759,6 +815,7 @@ class Dashboard:
         self.patrol_status = 'IDLE'
         self.patrol_stopping = False
         self.patrol_shutdown_thread = None
+        self.patrol_log_thread = None
         self.closing = False
         # Return Home state management
         self.return_home_pending = False
@@ -918,6 +975,21 @@ class Dashboard:
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=450)
         self.patrol_label.grid(row=2, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
+        # Mission progress panel
+        progress_panel = tk.LabelFrame(patrol, text='MISSION PROGRESS',
+                                       bg=self.BG, fg=self.FG)
+        progress_panel.grid(row=3, column=0, columnspan=3,
+                            sticky='ew', padx=8, pady=(6, 10))
+        self.progress_bar = ttk.Progressbar(progress_panel, orient='horizontal',
+                                            mode='determinate', maximum=100)
+        self.progress_bar.pack(fill='x', padx=8, pady=(8, 4))
+        self.progress_percent_label = self.label(progress_panel, 'Coverage: waiting for patrol data')
+        self.progress_percent_label.pack(anchor='w', padx=8)
+        self.progress_waypoint_label = self.label(progress_panel, 'Waypoint: -- / -- | Pass: --')
+        self.progress_waypoint_label.pack(anchor='w', padx=8, pady=(2, 3))
+        self.progress_feed_label = self.label(progress_panel, 'Progress feed: waiting for data')
+        self.progress_feed_label.pack(anchor='w', padx=8, pady=(0, 8))
+
         # Independent mapping status section; no duplicate patrol controls.
         mapping = tk.LabelFrame(control_frame, text='PARROT SCANNING & 3D MAPPING',
                                 bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
@@ -1056,6 +1128,21 @@ class Dashboard:
         with self.patrol_lock:
             return self.patrol_process is not None and self.patrol_process.poll() is None
     
+    def _read_patrol_output(self, proc):
+        try:
+            for line in proc.stdout:
+                print(line, end='', flush=True)  # Preserve terminal diagnostics.
+                if 'waypoint' in line.lower() and ('patrol' in line.lower() or 'coverage' in line.lower()):
+                    with self.patrol_lock:
+                        current = self.patrol_process is proc
+                    if current:
+                        self.node.parse_patrol_progress(line)
+        except (OSError, ValueError) as exc:
+            print(f'[PATROL PROGRESS] Log reader stopped: {exc}', flush=True)
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()
+
     # Starts the coverage patrol by launching a ROS2 launch file with specified parameters; checks for existing patrol or manual goals
     def start_patrol(self):
         if self.closing or self.patrol_stopping or self.return_home_pending:
@@ -1065,6 +1152,8 @@ class Dashboard:
             return
         with self.node.lock:
             self.node.patrol_completed = False
+            self.node.patrol_progress = None
+            self.node.patrol_progress_wall = None
             manual_busy = self.node.manual_goal is not None
         if manual_busy:
             self.feedback.config(text='Cancel the active Parrot manual goal before starting patrol.')
@@ -1107,10 +1196,22 @@ class Dashboard:
 
             # Start patrol process
             with self.patrol_lock:
+                launch_env = os.environ.copy()
+                launch_env['PYTHONUNBUFFERED'] = '1'
                 self.patrol_process = subprocess.Popen(
                     command,
-                    start_new_session=True
+                    start_new_session=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=launch_env,
                 )
+                self.patrol_log_thread = threading.Thread(
+                    target=self._read_patrol_output,
+                    args=(self.patrol_process,), daemon=True,
+                )
+                self.patrol_log_thread.start()
                 self.patrol_stopping = False
                 self.patrol_status = f'STARTING (PID {self.patrol_process.pid})'
 
@@ -1405,6 +1506,29 @@ class Dashboard:
                 self.patrol_status = f'LAUNCH RUNNING (PID {proc.pid}); check patrol logs for flight status'
             patrol_status = self.patrol_status
         self.patrol_label.config(text='Patrol: ' + patrol_status)
+        with self.node.lock:
+            progress = self.node.patrol_progress
+            progress_wall = self.node.patrol_progress_wall
+        if progress is None:
+            self.progress_bar['value'] = 0
+            self.progress_percent_label.config(text='Coverage: waiting for patrol data')
+            self.progress_waypoint_label.config(text='Waypoint: -- / -- | Pass: --')
+            self.progress_feed_label.config(text='Progress feed: waiting for ROS topic or patrol log')
+        else:
+            coverage = progress['coverage']
+            if coverage is not None:
+                self.progress_bar['value'] = coverage
+                self.progress_percent_label.config(text=f'Coverage: {coverage:.1f}%')
+            else:
+                self.progress_bar['value'] = 0
+                self.progress_percent_label.config(text='Coverage: not reported')
+            wp = progress['waypoint']
+            wp_text = f'{wp[0]} / {wp[1]}' if wp else '-- / --'
+            pass_text = str(progress['pass']) if progress['pass'] is not None else '--'
+            self.progress_waypoint_label.config(text=f'Waypoint: {wp_text} | Pass: {pass_text}')
+            age = time.monotonic() - progress_wall
+            self.progress_feed_label.config(text=('Progress feed: LIVE' if age <= 3.0
+                                                   else f'Progress feed: STALE ({age:.0f}s since update)'))
         self.update_mesh_status()
         self.patrol_start_button.config(state='disabled' if self.patrol_active() or self.patrol_stopping else 'normal')
         self.patrol_stop_button.config(state='normal' if self.patrol_active() and not self.patrol_stopping else 'disabled')
