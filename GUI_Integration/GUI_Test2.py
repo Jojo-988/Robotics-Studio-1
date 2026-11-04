@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import re
 import signal
 import subprocess
 import time
@@ -183,6 +184,16 @@ class BridgeNode(Node):
                                  self.on_manual_odometry, qos_profile_sensor_data)
         self.manual_timer = self.create_timer(0.05, self.manual_control_tick)
 
+        # Optional live patrol progress feed. The patrol backend must publish
+        # std_msgs/String messages such as:
+        # "PATROL | pass 0 | waypoint 12/119 | coverage 34.5%"
+        self.patrol_progress = None
+        self.patrol_progress_wall = None
+        self.create_subscription(
+            String, '/parrot1/coverage_patrol/progress',
+            self.on_patrol_progress, 10
+        )
+
         # A true event must be emitted by the patrol node on successful completion.
         self.patrol_completed = False
         self.create_subscription(Bool, '/parrot1/coverage_patrol/completed',
@@ -221,6 +232,26 @@ class BridgeNode(Node):
             self.create_subscription(LaserScan, cfg['scan'],
                 lambda msg, r=robot: self.on_scan(r, msg), qos_profile_sensor_data)
         
+    def on_patrol_progress(self, msg):
+        """Accept progress from the optional ROS topic."""
+        self.parse_patrol_progress(msg.data)
+
+    def parse_patrol_progress(self, report):
+        """Accept actual progress from either ROS messages or patrol launch logs."""
+        report = report.strip()
+        waypoint = re.search(r'waypoint\s+(\d+)\s*/\s*(\d+)', report, re.I)
+        coverage = re.search(r'coverage\s+([\d.]+)\s*%', report, re.I)
+        patrol_pass = re.search(r'pass\s+(\d+)', report, re.I)
+        if not (waypoint or coverage or patrol_pass):
+            return
+        with self.lock:
+            self.patrol_progress = {
+                'pass': int(patrol_pass.group(1)) if patrol_pass else None,
+                'waypoint': (int(waypoint.group(1)), int(waypoint.group(2))) if waypoint else None,
+                'coverage': min(100.0, max(0.0, float(coverage.group(1)))) if coverage else None,
+            }
+            self.patrol_progress_wall = time.monotonic()
+
     def on_patrol_completed(self, msg):
         if msg.data:
             with self.lock:
@@ -759,6 +790,7 @@ class Dashboard:
         self.patrol_status = 'IDLE'
         self.patrol_stopping = False
         self.patrol_shutdown_thread = None
+        self.patrol_log_thread = None
         self.closing = False
         # Return Home state management
         self.return_home_pending = False
@@ -918,6 +950,21 @@ class Dashboard:
         self.patrol_label = self.label(patrol, 'Patrol: IDLE', wrap=450)
         self.patrol_label.grid(row=2, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
+        # Mission progress panel
+        progress_panel = tk.LabelFrame(patrol, text='MISSION PROGRESS',
+                                       bg=self.BG, fg=self.FG)
+        progress_panel.grid(row=3, column=0, columnspan=3,
+                            sticky='ew', padx=8, pady=(6, 10))
+        self.progress_bar = ttk.Progressbar(progress_panel, orient='horizontal',
+                                            mode='determinate', maximum=100)
+        self.progress_bar.pack(fill='x', padx=8, pady=(8, 4))
+        self.progress_percent_label = self.label(progress_panel, 'Coverage: waiting for patrol data')
+        self.progress_percent_label.pack(anchor='w', padx=8)
+        self.progress_waypoint_label = self.label(progress_panel, 'Waypoint: -- / -- | Pass: --')
+        self.progress_waypoint_label.pack(anchor='w', padx=8, pady=(2, 3))
+        self.progress_feed_label = self.label(progress_panel, 'Progress feed: waiting for data')
+        self.progress_feed_label.pack(anchor='w', padx=8, pady=(0, 8))
+
         # Independent mapping status section; no duplicate patrol controls.
         mapping = tk.LabelFrame(control_frame, text='PARROT SCANNING & 3D MAPPING',
                                 bg=self.BG, fg=self.FG, font=('Arial', 11, 'bold'))
@@ -1056,6 +1103,21 @@ class Dashboard:
         with self.patrol_lock:
             return self.patrol_process is not None and self.patrol_process.poll() is None
     
+    def _read_patrol_output(self, proc):
+        try:
+            for line in proc.stdout:
+                print(line, end='', flush=True)  # Preserve terminal diagnostics.
+                if 'waypoint' in line.lower() and ('patrol' in line.lower() or 'coverage' in line.lower()):
+                    with self.patrol_lock:
+                        current = self.patrol_process is proc
+                    if current:
+                        self.node.parse_patrol_progress(line)
+        except (OSError, ValueError) as exc:
+            print(f'[PATROL PROGRESS] Log reader stopped: {exc}', flush=True)
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()
+
     # Starts the coverage patrol by launching a ROS2 launch file with specified parameters; checks for existing patrol or manual goals
     def start_patrol(self):
         if self.closing or self.patrol_stopping or self.return_home_pending:
@@ -1065,6 +1127,8 @@ class Dashboard:
             return
         with self.node.lock:
             self.node.patrol_completed = False
+            self.node.patrol_progress = None
+            self.node.patrol_progress_wall = None
             manual_busy = self.node.manual_goal is not None
         if manual_busy:
             self.feedback.config(text='Cancel the active Parrot manual goal before starting patrol.')
@@ -1107,10 +1171,22 @@ class Dashboard:
 
             # Start patrol process
             with self.patrol_lock:
+                launch_env = os.environ.copy()
+                launch_env['PYTHONUNBUFFERED'] = '1'
                 self.patrol_process = subprocess.Popen(
                     command,
-                    start_new_session=True
+                    start_new_session=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=launch_env,
                 )
+                self.patrol_log_thread = threading.Thread(
+                    target=self._read_patrol_output,
+                    args=(self.patrol_process,), daemon=True,
+                )
+                self.patrol_log_thread.start()
                 self.patrol_stopping = False
                 self.patrol_status = f'STARTING (PID {self.patrol_process.pid})'
 
@@ -1405,6 +1481,29 @@ class Dashboard:
                 self.patrol_status = f'LAUNCH RUNNING (PID {proc.pid}); check patrol logs for flight status'
             patrol_status = self.patrol_status
         self.patrol_label.config(text='Patrol: ' + patrol_status)
+        with self.node.lock:
+            progress = self.node.patrol_progress
+            progress_wall = self.node.patrol_progress_wall
+        if progress is None:
+            self.progress_bar['value'] = 0
+            self.progress_percent_label.config(text='Coverage: waiting for patrol data')
+            self.progress_waypoint_label.config(text='Waypoint: -- / -- | Pass: --')
+            self.progress_feed_label.config(text='Progress feed: waiting for ROS topic or patrol log')
+        else:
+            coverage = progress['coverage']
+            if coverage is not None:
+                self.progress_bar['value'] = coverage
+                self.progress_percent_label.config(text=f'Coverage: {coverage:.1f}%')
+            else:
+                self.progress_bar['value'] = 0
+                self.progress_percent_label.config(text='Coverage: not reported')
+            wp = progress['waypoint']
+            wp_text = f'{wp[0]} / {wp[1]}' if wp else '-- / --'
+            pass_text = str(progress['pass']) if progress['pass'] is not None else '--'
+            self.progress_waypoint_label.config(text=f'Waypoint: {wp_text} | Pass: {pass_text}')
+            age = time.monotonic() - progress_wall
+            self.progress_feed_label.config(text=('Progress feed: LIVE' if age <= 3.0
+                                                   else f'Progress feed: STALE ({age:.0f}s since update)'))
         self.update_mesh_status()
         self.patrol_start_button.config(state='disabled' if self.patrol_active() or self.patrol_stopping else 'normal')
         self.patrol_stop_button.config(state='normal' if self.patrol_active() and not self.patrol_stopping else 'disabled')
